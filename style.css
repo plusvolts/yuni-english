@@ -164,3 +164,14 @@ textarea { min-height: 90px; font-family: ui-monospace, monospace; font-size: 13
 @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
 .chant-card { width: min(520px, 100%); display: grid; justify-items: center; gap: 4px; text-align: center; }
 .icon-btn[disabled] { cursor: default; }
+.spec { line-height: 1.6; -webkit-user-select: text; user-select: text; }
+.spec h2 { font-size: var(--fs-lg); margin: 4px 0 8px; }
+.spec h3 { font-size: var(--fs-md); margin: 18px 0 8px; }
+.spec p { margin: 6px 0; }
+.spec code { background: var(--bg); padding: 1px 6px; border-radius: 6px; }
+.spec-table { overflow-x: auto; margin: 8px 0; }
+.spec-table table { border-collapse: collapse; width: 100%; font-size: 15px; }
+.spec-table th, .spec-table td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+.spec-table th { background: var(--bg); white-space: nowrap; }
+.spec-code { background: var(--bg); padding: 10px 12px; border-radius: 12px; overflow-x: auto; font-size: 14px; }
+.spec-table td:first-child { white-space: nowrap; font-weight: 700; }

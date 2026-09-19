@@ -1,7 +1,7 @@
 /* 윤이 영어 — 앱 로직 (의존성 없음) */
 (() => {
   'use strict';
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.3.3';
   const C = window.CONTENT;
   const T = C.topics;
   const DAYS = 10;
@@ -796,6 +796,58 @@
     if (!o || !o.pos) return false;
     const d = defaults(); S = Object.assign(d, o, { settings: Object.assign(d.settings, o.settings || {}) }); save(); return true;
   }
+  /* 새 버전 확인·적용 (진도·별·설정은 localStorage에 그대로 남아요) */
+  const verNum = v => String(v || '0').split('.').map(Number);
+  const isNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+  let latestVer = null;
+  async function checkUpdate() {
+    const r = await fetch('app.js?check=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('fetch');
+    const m = (await r.text()).match(/APP_VERSION = '([\d.]+)'/);
+    latestVer = m ? m[1] : null; return latestVer;
+  }
+  async function applyUpdate() {
+    toast('새 버전을 받는 중이에요…');
+    const files = ['./', 'index.html', 'app.js', 'content.js', 'style.css', 'sw.js', 'manifest.webmanifest', 'audio/index.json', '기획서.md'];
+    try { await Promise.all(files.map(u => fetch(encodeURI(u), { cache: 'reload' }).catch(() => {}))); } catch (e) { /* */ }
+    try { if (navigator.serviceWorker) for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister(); } catch (e) { /* */ }
+    try { if (window.caches) for (const k of await caches.keys()) await caches.delete(k); } catch (e) { /* */ }
+    location.replace(location.pathname + '?v=' + Date.now());
+  }
+
+  /* 기획·변경 기록: 앱 안의 기획서.md를 읽어서 보여줘요 */
+  function mdToHtml(md) {
+    const inl = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+    const out = []; const lines = md.split('\n'); let i = 0;
+    while (i < lines.length) {
+      const l = lines[i];
+      if (l.startsWith('```')) { const buf = []; i++; while (i < lines.length && !lines[i].startsWith('```')) buf.push(lines[i++]); i++; out.push(`<pre class="spec-code">${esc(buf.join('\n'))}</pre>`); continue; }
+      if (/^#{1,3} /.test(l)) { const n = l.match(/^#+/)[0].length; out.push(`<h${n + 1}>${inl(l.replace(/^#+ /, ''))}</h${n + 1}>`); i++; continue; }
+      if (l.startsWith('|')) {
+        const rows = []; while (i < lines.length && lines[i].startsWith('|')) rows.push(lines[i++]);
+        const cells = r => r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        const body = rows.filter((r, k) => k !== 1);
+        out.push(`<div class="spec-table"><table>${body.map((r, k) => `<tr>${cells(r).map(c => k === 0 ? `<th>${inl(c)}</th>` : `<td>${inl(c)}</td>`).join('')}</tr>`).join('')}</table></div>`); continue;
+      }
+      if (/^(- |\d+\. )/.test(l)) {
+        const ol = /^\d+\. /.test(l); const items = [];
+        while (i < lines.length && /^(- |\d+\. )/.test(lines[i])) items.push(lines[i++].replace(/^(- |\d+\. )/, ''));
+        out.push(`<${ol ? 'ol' : 'ul'} class="list">${items.map(x => `<li>${inl(x)}</li>`).join('')}</${ol ? 'ol' : 'ul'}>`); continue;
+      }
+      if (l.trim()) out.push(`<p>${inl(l)}</p>`);
+      i++;
+    }
+    return out.join('');
+  }
+  function specScreen() {
+    render('spec', `<div class="screen"><div class="parent">
+      <div class="topbar"><button class="icon-btn" data-act="back" aria-label="아빠 화면으로">⬅️</button><h2 class="title">📋 기획·변경 기록</h2><div class="spacer"></div><span class="muted">v${APP_VERSION}</span></div>
+      <div class="card spec" id="spec">불러오는 중…</div></div></div>`, { back: parentScreen });
+    const show = md => { const el = document.getElementById('spec'); if (el) el.innerHTML = mdToHtml(md); };
+    if (window.__SPEC_INLINE) return show(window.__SPEC_INLINE);
+    fetch(encodeURI('기획서.md')).then(r => { if (!r.ok) throw 0; return r.text(); }).then(show)
+      .catch(() => { const el = document.getElementById('spec'); if (el) el.textContent = '기획서.md 파일을 찾지 못했어요. 앱 폴더에 기획서.md가 있는지 확인해 주세요.'; });
+  }
   function exportCode() { return btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }
   function parentScreen() {
     const td = today(); const weekAgo = addDays(-6);
@@ -808,7 +860,7 @@
     const min = Math.round(todayLog().sec / 60);
     const st = S.settings; const code = `${S.pos.t + 1}-${S.pos.d}-${S.pos.s + 1}`;
     render('parent', `<div class="screen"><div class="parent">
-      <div class="topbar"><button class="icon-btn" data-act="home">🏠</button><h2 class="title">아빠 화면</h2><div class="spacer"></div><span class="muted">v${APP_VERSION}</span></div>
+      <div class="topbar"><button class="icon-btn" data-act="home">🏠</button><h2 class="title">아빠 화면</h2><div class="spacer"></div><button class="btn small" data-act="spec">📋 기획·변경 기록</button><span class="muted">v${APP_VERSION}</span></div>
       <div class="card"><h3>이번 주 (최근 7일)</h3><div class="kv">
         <div>학습한 날<b>${days7}일</b></div><div>새로 익힌 단어<b>${learned7}개</b></div><div>오늘 사용<b>${min}분</b></div><div>연속<b>${streak()}일</b></div>
       </div>
@@ -816,6 +868,12 @@
       <div class="card"><h3>전체</h3><div class="kv">
         <div>누적 학습일<b>${S.days.length}일</b></div><div>익힌 단어<b>${learnedAll}개</b></div><div>“알아요” 단어<b>${mastered}개</b></div><div>별<b>${S.stars}개</b></div><div>스티커<b>${Object.keys(S.stickers).length} / ${T.length}</b></div>
       </div></div>
+      <div class="card"><h3>앱 업데이트</h3>
+        <p>이 기기의 앱: <b>v${APP_VERSION}</b> <span id="verInfo" class="muted">${latestVer ? (isNewer(latestVer, APP_VERSION) ? `· 새 버전 v${latestVer}이 있어요!` : '· 최신 버전이에요') : ''}</span></p>
+        <div class="row" style="flex-wrap:wrap"><button class="btn small" data-act="checkver">🔄 새 버전 확인</button>
+          <button class="btn small primary" data-act="doupdate" id="updBtn"${latestVer && isNewer(latestVer, APP_VERSION) ? '' : ' hidden'}>⬇️ 지금 업데이트</button></div>
+        <p class="muted">업데이트해도 진도·별·보상·설정은 그대로 남아요. 인터넷이 연결돼 있어야 해요.</p>
+      </div>
       <div class="card"><h3>진도 조정</h3>
         <p>지금 진도: <b>${esc(T[S.pos.t].title)} ${S.pos.d}일차 · ${STEPS[S.pos.s].name}</b> <span class="muted">(코드 ${code})</span></p>
         <div class="form">
@@ -899,6 +957,17 @@
       star: a => { S.stars = Math.max(0, S.stars + Number(a)); S.goalBase = Math.min(S.goalBase, S.stars); save(); parentScreen(); },
       starset: () => { const v = parseInt(document.getElementById('starSet').value, 10); if (!(v >= 0)) return toast('0 이상의 숫자를 적어주세요'); S.stars = v; S.goalBase = Math.min(S.goalBase, S.stars); save(); toast(`별을 ${v}개로 맞췄어요`); parentScreen(); },
       delrw: (i, btn) => { if (!btn.dataset.sure) { btn.dataset.sure = 1; btn.textContent = '한 번 더 누르면 삭제'; return; } S.rewards.splice(+i, 1); save(); parentScreen(); },
+      spec: specScreen,
+      checkver: async () => {
+        const info = document.getElementById('verInfo'); if (info) info.textContent = '· 확인 중…';
+        try {
+          const v = await checkUpdate();
+          const nw = v && isNewer(v, APP_VERSION);
+          if (info) info.textContent = nw ? `· 새 버전 v${v}이 있어요!` : `· 최신 버전이에요 (서버 v${v || '?'})`;
+          const b = document.getElementById('updBtn'); if (b) b.hidden = !nw;
+        } catch (e) { if (info) info.textContent = '· 확인하지 못했어요. 인터넷 연결을 확인해 주세요'; }
+      },
+      doupdate: applyUpdate,
       kotest: () => { hush(); ko('딱정벌레! 딱딱한 날개를 가진 곤충이야. 오늘 영어 끝! 정말 잘했어, 윤이야.'); },
       unlock: () => { S.override = today(); save(); toast('오늘은 시간 제한 없이 할 수 있어요'); },
       gave: () => { S.rewards.push({ date: today(), text: S.settings.goalText, stars: Number(S.settings.goalStars) }); S.goalBase = S.stars; save(); toast('보상을 기록했어요. 새 목표를 시작해요!'); parentScreen(); },
@@ -920,4 +989,7 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) { hush(); stopRec(); } });
   window.YUNI = { get state() { return S; }, get act() { return L && L.acts[L.i]; }, matches, parseCode, fill }; // 테스트용
   homeScreen();
+  // 시작하고 잠시 뒤 새 버전이 있는지 조용히 확인
+  setTimeout(() => { if (!/^https?:/.test(location.protocol) || window.__SPEC_INLINE || navigator.onLine === false) return;
+    checkUpdate().then(v => { if (v && isNewer(v, APP_VERSION) && screen === 'home') toast(`새 버전 v${v}이 있어요. 아빠 화면에서 업데이트하세요`); }).catch(() => {}); }, 3000);
 })();
