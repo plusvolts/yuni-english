@@ -1,7 +1,7 @@
 /* 윤이 영어 — 앱 로직 (의존성 없음) */
 (() => {
   'use strict';
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.3.1';
   const C = window.CONTENT;
   const T = C.topics;
   const DAYS = 10;
@@ -18,7 +18,7 @@
   /* ================= 저장소 ================= */
   function defaults() {
     return {
-      settings: { robotName: '로보', childName: 'Yuni', age: 'seven', hyunRel: 'brother', dailyLimit: 20, voice: 'native', goalStars: 50, goalText: '아빠와 약속한 선물' },
+      settings: { robotName: '로보', childName: 'Yuni', age: 'seven', hyunRel: 'brother', dailyLimit: 20, voice: 'native', koVoice: '', koRate: 0.9, goalStars: 50, goalText: '아빠와 약속한 선물' },
       pos: { t: 0, d: 1, s: 0 }, done: {}, stars: 0, goalBase: 0,
       srs: {}, days: [], log: {}, stickers: {}, override: '', rewards: [],
     };
@@ -62,7 +62,14 @@
   let voices = [];
   function loadVoices() { try { voices = speechSynthesis.getVoices(); } catch (e) { voices = []; } }
   if ('speechSynthesis' in window) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+  const koVoices = () => voices.filter(v => v.lang && v.lang.replace('_', '-').toLowerCase().startsWith('ko'));
   function voiceFor(lang) {
+    if (lang === 'ko-KR') {
+      const ks = koVoices();
+      const chosen = S.settings.koVoice && ks.find(v => v.voiceURI === S.settings.koVoice || v.name === S.settings.koVoice);
+      // 아빠가 고른 목소리 → 구글(자연스러움) → 삼성 → 아무 한국어 목소리
+      return chosen || ks.find(v => /google/i.test(v.name)) || ks.find(v => /samsung/i.test(v.name)) || ks[0] || null;
+    }
     const cands = voices.filter(v => v.lang && v.lang.replace('_', '-').toLowerCase().startsWith(lang.toLowerCase()));
     return cands.find(v => /google/i.test(v.name)) || cands.find(v => /samsung/i.test(v.name)) || cands[0] || null;
   }
@@ -105,7 +112,16 @@
     }
     return speak(t, 'en-US', slow ? 0.7 : 0.95);
   }
-  const ko = t => speak(t, 'ko-KR', 1.0);
+  // 한국어는 문장부호마다 짧게 끊어서, 조금 천천히 읽어요 (긴 문장이 뭉개지지 않게)
+  async function ko(t) {
+    const parts = String(t).split(/(?<=[.!?,])\s+/).map(x => x.trim()).filter(Boolean);
+    const my = sayToken; const rate = Number(S.settings.koRate) || 0.9;
+    for (let i = 0; i < parts.length; i++) {
+      if (my !== sayToken) return;
+      await speak(parts[i], 'ko-KR', rate);
+      if (i < parts.length - 1) await sleep(120);
+    }
+  }
   function hush() { sayToken++; try { speechSynthesis.cancel(); } catch (e) { /* */ } if (curAudio) { try { curAudio.pause(); } catch (e) { /* */ } curAudio = null; } }
   const LINES = C.lines || {};
   const praise = () => fill(pick(LINES.praise || ['Great job!']));
@@ -181,7 +197,7 @@
   let screen = '';
   let actToken = 0;
   function render(name, html, handlers) {
-    screen = name; hush(); stopRec(); actToken++; clearTimeout(talkTimer);
+    screen = name; hush(); stopRec(); actToken++; clearTimeout(talkTimer); if (typeof beat === 'function' && name !== 'reward') beat(false);
     document.querySelectorAll('.confetti,.feedback').forEach(x => x.remove());
     $app.innerHTML = html; H = handlers || {}; window.scrollTo(0, 0);
   }
@@ -374,7 +390,7 @@
     const lr = lockReason(); if (lr) return lockedScreen(lr);
     if (!(t >= 0 && t < T.length)) t = 0;
     S.pos = { t, d, s }; if (!S.days.includes(today())) S.days.push(today()); save();
-    L = { t, d, s, acts: [], i: 0, earned: 0, heardKo: {}, words: newWords(t, d) };
+    L = { t, d, s, acts: [], i: 0, earned: 0, heardKo: {}, awarded: {}, words: newWords(t, d) };
     L.acts = buildStep(t, d, s);
     showAct();
   }
@@ -394,10 +410,17 @@
     L.acts = buildStep(L.t, L.d, L.s); L.i = 0;
     stepIntro();
   }
+  // 별: 한 번에 맞히면 1개 (하루 최대 약 16개 + 완료 보너스 3개 = 20개 이하)
+  const DAY_STAR_MAX = 20, DAY_BONUS = 3;
   function award(attempts) {
-    const n = attempts === 0 ? 3 : attempts === 1 ? 2 : 1;
-    S.stars += n; L.earned += n; todayLog().stars += n; save();
-    const el = document.querySelector('.stars'); if (el) el.textContent = `⭐ ${S.stars}`;
+    const key = `${L.s}:${L.i}`;
+    let n = attempts === 0 ? 1 : 0;
+    if (L.awarded[key] || L.earned >= DAY_STAR_MAX - DAY_BONUS) n = 0; // 이전 버튼으로 다시 풀어도 별은 한 번만
+    L.awarded[key] = 1;
+    if (n) {
+      S.stars += n; L.earned += n; todayLog().stars += n; save();
+      const el = document.querySelector('.stars'); if (el) el.textContent = `⭐ ${S.stars}`;
+    }
     return n;
   }
   function mark(t, w, correct, isReview) {
@@ -420,6 +443,7 @@
     return `<div class="screen">
       <div class="topbar">
         <button class="icon-btn" data-act="quit" aria-label="처음으로">🏠</button>
+        <button class="icon-btn" data-act="prev" aria-label="이전 문제"${L.s === 0 && L.i === 0 ? ' disabled style="opacity:.35"' : ''}>◀</button>
         <div class="train">${STEPS.map((st, i) => `<div class="car${i < L.s ? ' done' : i === L.s ? ' now' : ''}" style="--p:${p}%">${i === L.s ? '<i></i>' : ''}</div>`).join('')}</div>
         <div class="stars">⭐ ${S.stars}</div>
       </div>
@@ -427,7 +451,20 @@
       <div class="stage${opts.split ? ' split' : ''}">${inner}</div>
     </div>`;
   }
-  const baseHandlers = () => ({ quit: homeScreen });
+  const baseHandlers = () => ({ quit: homeScreen, prev: prevAct });
+  // 이전 문제로 (단계 첫 문제면 앞 단계의 마지막 문제로)
+  function prevAct() {
+    hush();
+    let s = L.s, i = L.i, acts = L.acts;
+    do {
+      if (i > 0) i--;
+      else if (s > 0) { s--; acts = buildStep(L.t, L.d, s); i = acts.length - 1; }
+      else return;
+    } while (acts[i].type === 'msg' && (i > 0 || s > 0));
+    if (acts[i].type === 'msg') return;
+    L.s = s; L.i = i; L.acts = acts; S.pos.s = s; save();
+    showAct();
+  }
 
   function showAct() {
     const a = L.acts[L.i];
@@ -454,12 +491,12 @@
       </div>`, { split: true }), {
       ...baseHandlers(),
       play: () => { hush(); en(q); },
-      feel: async w => { if (greeted) return; greeted = true; hush(); const my = actToken; const fl = FL[w] || [`I'm ${w}!`, "Let's get started!"]; await en(fl[0]); if (my !== actToken) return; ding(); award(2); flash('⭐'); await en(fl[1]); if (my === actToken) nextAct(); },
+      feel: async w => { if (greeted) return; greeted = true; hush(); const my = actToken; const fl = FL[w] || [`I'm ${w}!`, "Let's get started!"]; await en(fl[0]); if (my !== actToken) return; ding(); flash(award(0) ? '⭐' : '👍'); await en(fl[1]); if (my === actToken) nextAct(); },
       ...micHandlers(['happy', 'good', 'fine', 'great', 'sleepy', 'hungry', 'sad', 'okay', 'ok', 'tired', 'angry', 'excited'], async (ok, alts) => {
         const my = actToken;
         if (greeted) return;
         if (ok) {
-          greeted = true; ding(); award(0); flash('🌟');
+          greeted = true; ding(); flash(award(0) ? '⭐' : '👍');
           const said = (alts || []).join(' ').toLowerCase(); const key = Object.keys(FL).find(k => said.includes(k));
           await en(key ? FL[key][1] : fill(LINES.greetOk || "Great! Let's get started!")); if (my === actToken) nextAct();
         }
@@ -503,9 +540,9 @@
       hush(); const my = actToken;
       if (arg === w.en) {
         btn.classList.add('right'); ding();
-        const n = award(attemptsRef.n); flash(n === 3 ? '🌟' : '⭐');
+        const n = award(attemptsRef.n); flash(n ? '⭐' : '👍');
         mark(a.t, w, attemptsRef.n === 0, a.review);
-        await en(w.en); if (my === actToken && n === 3 && Math.random() < 0.5) await en(praise()); await sleep(300); if (my === actToken) nextAct();
+        await en(w.en); if (my === actToken && n && Math.random() < 0.5) await en(praise()); await sleep(300); if (my === actToken) nextAct();
       } else {
         attemptsRef.n++; boop(); btn.classList.add('wrong');
         document.querySelectorAll('.choice').forEach(c => { if (c.dataset.arg === w.en) c.classList.add('glow'); });
@@ -584,7 +621,7 @@
       const my = actToken;
       if (closed) return;
       if (ok) {
-        closed = true; ding(); const n = award(self ? 1 : fails); flash(n === 3 ? '🌟' : '⭐');
+        closed = true; ding(); const n = award(self ? 0 : fails); flash(n ? '⭐' : '👍');
         if (a.w) mark(a.t, a.w, fails === 0, false);
         await cfg.success(); await sleep(300); if (my === actToken) nextAct();
         return;
@@ -594,7 +631,7 @@
       else if (fails === 2) await cfg.hint2();
       else {
         closed = true; if (a.w) mark(a.t, a.w, false, false);
-        setHint('좋아! 다음에 또 해보자'); award(3); await ko('좋아! 다음에 또 해보자'); await sleep(300); if (my === actToken) nextAct();
+        setHint('좋아! 다음에 또 해보자'); award(3); flash('👍'); await ko('좋아! 다음에 또 해보자'); await sleep(300); if (my === actToken) nextAct();
       }
     };
   }
@@ -672,6 +709,44 @@
       document.body.appendChild(c); setTimeout(() => c.remove(), 4200);
     }
   }
+  /* 오늘의 단어 노래: 영어 단어 두 번 → 한국어 뜻과 설명, 뒤에 작은 박자 */
+  let beatTimer = null;
+  function beat(on) {
+    clearInterval(beatTimer); beatTimer = null;
+    if (!on) return;
+    let n = 0;
+    beatTimer = setInterval(() => {
+      if (screen !== 'reward') return beat(false);
+      try {
+        actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+        const o = actx.createOscillator(), g = actx.createGain(); const t0 = actx.currentTime;
+        const kick = n % 2 === 0;
+        o.type = kick ? 'sine' : 'triangle'; o.frequency.setValueAtTime(kick ? 140 : 900, t0); if (kick) o.frequency.exponentialRampToValueAtTime(50, t0 + 0.15);
+        g.gain.setValueAtTime(kick ? 0.12 : 0.03, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + (kick ? 0.18 : 0.05));
+        o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.2);
+      } catch (e) { /* */ }
+      n++;
+    }, 320);
+  }
+  async function singWords(words) {
+    hush(); const my = sayToken; const box = document.getElementById('chant'); if (!box) return;
+    const D = C.wordDesc || {};
+    box.hidden = false; beat(true);
+    await ko('오늘의 단어 노래! 따라 불러봐요!');
+    for (const w of words) {
+      if (my !== sayToken) break;
+      const desc = D[w.en] || '';
+      box.innerHTML = `<div class="pic" style="font-size:90px">${picHtml(w)}</div><div class="word">${esc(w.en)}</div><div class="ko">${esc(w.ko)}</div>${desc ? `<div style="font-size:20px;font-weight:700;margin-top:6px">${esc(desc)}</div>` : ''}`;
+      await en(w.en); if (my !== sayToken) break;
+      await sleep(150); await en(w.en); if (my !== sayToken) break;
+      await ko(`${w.ko}!`); if (my !== sayToken) break;
+      if (desc) { await sleep(200); await ko(desc); if (my !== sayToken) break; }
+      await sleep(250);
+    }
+    beat(false);
+    if (my === sayToken) { box.innerHTML = '<div class="word">🎵 Yay! 🎵</div><div class="ko">노래 끝! 잘 따라 불렀어요</div>'; await en(praise()); }
+  }
+
   function finishDay() {
     const { t, d } = L; const tp = T[t];
     S.done[`${t}-${d}`] = today();
@@ -679,12 +754,16 @@
     if (doneCount(t) >= DAYS && !S.stickers[t]) { S.stickers[t] = today(); newSticker = true; }
     // 다음 진도
     let nt = t, nd = d + 1; if (nd > DAYS) { nd = 1; nt = (t + 1) % T.length; }
-    S.pos = { t: nt, d: nd, s: 0 }; save();
+    S.pos = { t: nt, d: nd, s: 0 };
+    const bonus = Math.max(0, Math.min(DAY_BONUS, DAY_STAR_MAX - L.earned));
+    S.stars += bonus; L.earned += bonus; todayLog().stars += bonus; save();
     const todayWords = L.words;
     render('reward', `<div class="screen"><div class="reward">
       <div class="friends">${Object.keys(C.friends).map(id => friendHtml(id, true)).join('')}</div>
       <div class="bubble">오늘 영어 끝! 정말 잘했어, ${esc(S.settings.childName)}!<small>내일 또 만나요 👋</small></div>
       <div class="big-stars">⭐ +${L.earned}</div>
+      ${bonus ? `<div class="muted" style="font-weight:800;margin-top:-10px">끝까지 한 보너스 ⭐${bonus} 포함</div>` : ''}
+      <div class="card chant-card" id="chant" hidden></div>
       ${newSticker ? `<div class="sticker-new">${tp.sticker}</div><div class="bubble">${esc(tp.title)} 스티커를 받았어요!</div>` : ''}
       ${tp.mission ? `<div class="card mission">🧪 ${esc(tp.mission)}</div>` : ''}
       <div class="home-links">
@@ -694,10 +773,7 @@
       </div>
     </div></div>`, {
       home: homeScreen, stickers: stickerScreen,
-      chant: async () => {
-        hush(); const my = sayToken;
-        for (const w of todayWords) { if (my !== sayToken) break; await en(w.en); if (my !== sayToken) break; await en(w.en); if (my !== sayToken) break; await ko(w.ko); }
-      },
+      chant: () => singWords(todayWords),
     });
     confetti(); tone([523, 659, 784, 1046], 0.16);
     ko(`오늘 영어 끝! 정말 잘했어, 윤이야. ${newSticker ? '스티커도 받았어!' : '내일 또 만나!'}`);
@@ -771,6 +847,10 @@
       </div>
       <div class="card"><h3>설정</h3><div class="form">
         <label>영어 이름<input data-set="childName" value="${esc(st.childName)}"></label>
+        <label>한국어 목소리<select data-set="koVoice"><option value="">자동 (구글 음성 우선)</option>${koVoices().map(v => `<option value="${esc(v.voiceURI || v.name)}"${st.koVoice === (v.voiceURI || v.name) ? ' selected' : ''}>${esc(v.name)}${v.localService ? '' : ' (온라인)'}</option>`).join('')}</select></label>
+        <label>한국어 말 속도<select data-set="koRate">${[['0.8', '천천히'], ['0.9', '보통 (추천)'], ['1', '빠르게']].map(([v, n]) => `<option value="${v}"${Number(st.koRate) === Number(v) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+        <div class="row" style="flex-wrap:wrap"><button class="btn small" data-act="kotest">🔈 한국어 들어보기</button>
+          <span class="muted">${koVoices().length ? `이 기기의 한국어 목소리 ${koVoices().length}개` : '⚠️ 한국어 목소리를 못 찾았어요. 아래 안내를 보세요'}</span></div>
         <label>영어 목소리<select data-set="voice"><option value="native"${st.voice !== 'device' ? ' selected' : ''}>원어민 녹음 (추천)</option><option value="device"${st.voice === 'device' ? ' selected' : ''}>기기 음성</option></select></label>
         <label>로봇 친구 이름<input data-set="robotName" value="${esc(st.robotName)}"></label>
         <label>나이 (영어 대답)<select data-set="age">${['six', 'seven', 'eight'].map(v => `<option${st.age === v ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -786,6 +866,7 @@
       </div></div>
       <div class="card"><h3>안내</h3><ul class="list">
         <li>단어·질문 수정은 <b>content.js</b> 파일에서 해요. 고친 뒤 <b>sw.js</b>의 VERSION을 올리면 설치된 앱에 반영돼요.</li>
+        <li>한국어가 잘 안 들리면: 태블릿 <b>설정 → 일반 → 글자 읽어주기(TTS) → 기본 엔진</b>을 <b>Google 음성 인식 및 합성</b>으로 바꾸고, 엔진 설정에서 <b>한국어 음성 데이터(고품질)</b>를 설치한 뒤 앱을 다시 켜세요. 그다음 위의 “한국어 목소리”에서 마음에 드는 목소리를 골라요.</li>
         <li>불편한 점·개선 아이디어는 기획서의 “개선 요청” 표에 적어주세요.</li>
         <li>음성인식: ${SR ? (micDenied ? '마이크 권한이 꺼져 있어요 (크롬 설정 → 사이트 설정 → 마이크)' : '사용 가능') : '이 브라우저는 지원하지 않아요 → 크롬에서 열어주세요'}</li>
       </ul></div>
@@ -818,6 +899,7 @@
       star: a => { S.stars = Math.max(0, S.stars + Number(a)); S.goalBase = Math.min(S.goalBase, S.stars); save(); parentScreen(); },
       starset: () => { const v = parseInt(document.getElementById('starSet').value, 10); if (!(v >= 0)) return toast('0 이상의 숫자를 적어주세요'); S.stars = v; S.goalBase = Math.min(S.goalBase, S.stars); save(); toast(`별을 ${v}개로 맞췄어요`); parentScreen(); },
       delrw: (i, btn) => { if (!btn.dataset.sure) { btn.dataset.sure = 1; btn.textContent = '한 번 더 누르면 삭제'; return; } S.rewards.splice(+i, 1); save(); parentScreen(); },
+      kotest: () => { hush(); ko('딱정벌레! 딱딱한 날개를 가진 곤충이야. 오늘 영어 끝! 정말 잘했어, 윤이야.'); },
       unlock: () => { S.override = today(); save(); toast('오늘은 시간 제한 없이 할 수 있어요'); },
       gave: () => { S.rewards.push({ date: today(), text: S.settings.goalText, stars: Number(S.settings.goalStars) }); S.goalBase = S.stars; save(); toast('보상을 기록했어요. 새 목표를 시작해요!'); parentScreen(); },
       reset: (x, btn) => { if (btn.dataset.sure) { S = defaults(); save(); toast('초기화했어요'); homeScreen(); } else { btn.dataset.sure = 1; btn.textContent = '정말 초기화? 한 번 더 누르기'; } },

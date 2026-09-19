@@ -162,3 +162,5 @@ textarea { min-height: 90px; font-family: ui-monospace, monospace; font-size: 13
 .toast.show { opacity: 1; }
 .confetti { position: fixed; top: -40px; font-size: 32px; animation: fall linear forwards; pointer-events: none; z-index: 10; }
 @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+.chant-card { width: min(520px, 100%); display: grid; justify-items: center; gap: 4px; text-align: center; }
+.icon-btn[disabled] { cursor: default; }
