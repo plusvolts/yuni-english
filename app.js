@@ -1,7 +1,7 @@
 /* 윤이 영어 — 앱 로직 (의존성 없음) */
 (() => {
   'use strict';
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.2.0';
   const C = window.CONTENT;
   const T = C.topics;
   const DAYS = 10;
@@ -20,7 +20,7 @@
     return {
       settings: { robotName: '로보', childName: 'Yuni', age: 'seven', hyunRel: 'brother', dailyLimit: 20, voice: 'native', goalStars: 50, goalText: '아빠와 약속한 선물' },
       pos: { t: 0, d: 1, s: 0 }, done: {}, stars: 0, goalBase: 0,
-      srs: {}, days: [], log: {}, stickers: {}, override: '',
+      srs: {}, days: [], log: {}, stickers: {}, override: '', rewards: [],
     };
   }
   function load() {
@@ -240,13 +240,15 @@
           <button class="btn" data-act="picker">🧭 단계 고르기</button>
           <button class="btn" data-act="stickers">📒 스티커북</button>
         </div>
-        <div class="goal card"><div class="row"><b>🎁 ${esc(S.settings.goalText)}</b><div class="spacer"></div><span class="muted">${Math.min(g, goal)} / ${goal}</span></div>
-          <div class="goal-bar"><i style="width:${pct}%"></i></div></div>
+        <button class="goal card" data-act="rewards" style="text-align:left"><div class="row"><b>🎁 ${esc(S.settings.goalText)}</b><div class="spacer"></div><span class="muted">${g >= goal ? '달성! 🎉' : `${g} / ${goal}`}</span></div>
+          <div class="goal-bar"><i style="width:${pct}%"></i></div>
+          <div class="row" style="margin-top:8px"><span class="muted">받은 보상 ${S.rewards.length}개</span><div class="spacer"></div><span class="muted">보상 목록 보기 ›</span></div></button>
       </div>
     </div>`, {
       go: () => startLesson(S.pos.t, S.pos.d, S.pos.s),
       picker: () => pickerScreen('topics'),
       stickers: stickerScreen,
+      rewards: rewardScreen,
       parent: () => gateScreen(parentScreen),
       hello: () => { hush(); en(fill(LINES.hi || 'Hi, {NAME}!')); },
       install: async () => { if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch (e) { /* */ } installEvt = null; homeScreen(); } },
@@ -289,6 +291,21 @@
       step: a => startLesson(t, d, +a),
       code: () => { const p = parseCode(document.getElementById('code').value); if (!p) return toast('예: 4-3 처럼 적어주세요'); startLesson(p.t, p.d, p.s); },
     });
+  }
+
+  /* ================= 받은 보상 ================= */
+  function rewardScreen() {
+    const g = Math.max(0, S.stars - S.goalBase); const goal = Math.max(1, Number(S.settings.goalStars));
+    const list = S.rewards.slice().reverse();
+    render('rewards', `<div class="screen">
+      <div class="topbar"><button class="icon-btn" data-act="home" aria-label="처음으로">🏠</button><h2 class="title">🎁 받은 보상</h2></div>
+      <div class="card goal" style="width:100%"><div class="row"><b>지금 목표: ${esc(S.settings.goalText)}</b><div class="spacer"></div><span class="muted">${Math.min(g, goal)} / ${goal}</span></div>
+        <div class="goal-bar"><i style="width:${Math.min(100, Math.round(g / goal * 100))}%"></i></div>
+        ${g >= goal ? '<p style="margin:10px 0 0;font-weight:800">목표 달성! 아빠에게 보여줘요 🎉</p>' : `<p class="muted" style="margin:10px 0 0">별 ${goal - g}개만 더 모으면 돼요!</p>`}</div>
+      ${list.length ? `<div class="grid">${list.map((r, i) => `<div class="tile"><span class="em">🎁</span><b>${esc(r.text)}</b><small>${esc(r.date)} · 별 ${r.stars}개</small><small>${list.length - i}번째 보상</small></div>`).join('')}</div>`
+        : '<p class="muted">아직 받은 보상이 없어요. 별을 모아서 첫 보상을 받아봐요!</p>'}
+    </div>`, { home: homeScreen });
+    if (g >= goal) ko('목표 달성! 아빠에게 보여줘요!');
   }
 
   /* ================= 스티커북 ================= */
@@ -697,6 +714,12 @@
     });
     setTimeout(() => { const i = document.getElementById('ans'); if (i) { i.focus(); i.addEventListener('keydown', e => { if (e.key === 'Enter') H.ok(); }); } }, 50);
   }
+  function restore(txt) {
+    txt = String(txt || '').trim(); let o = null;
+    try { o = JSON.parse(txt); } catch (e) { try { o = JSON.parse(decodeURIComponent(escape(atob(txt)))); } catch (e2) { o = null; } }
+    if (!o || !o.pos) return false;
+    const d = defaults(); S = Object.assign(d, o, { settings: Object.assign(d.settings, o.settings || {}) }); save(); return true;
+  }
   function exportCode() { return btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }
   function parentScreen() {
     const td = today(); const weekAgo = addDays(-6);
@@ -717,12 +740,34 @@
       <div class="card"><h3>전체</h3><div class="kv">
         <div>누적 학습일<b>${S.days.length}일</b></div><div>익힌 단어<b>${learnedAll}개</b></div><div>“알아요” 단어<b>${mastered}개</b></div><div>별<b>${S.stars}개</b></div><div>스티커<b>${Object.keys(S.stickers).length} / ${T.length}</b></div>
       </div></div>
+      <div class="card"><h3>진도 조정</h3>
+        <p>지금 진도: <b>${esc(T[S.pos.t].title)} ${S.pos.d}일차 · ${STEPS[S.pos.s].name}</b> <span class="muted">(코드 ${code})</span></p>
+        <div class="form">
+          <label>주제<select id="adjT">${T.map((tp, i) => `<option value="${i}"${S.pos.t === i ? ' selected' : ''}>${i + 1}. ${esc(tp.title)} (${doneCount(i)}/${DAYS}일)</option>`).join('')}</select></label>
+          <label>일차<select id="adjD">${Array.from({ length: DAYS }, (_, i) => `<option value="${i + 1}"${S.pos.d === i + 1 ? ' selected' : ''}>${i + 1}일차</option>`).join('')}</select></label>
+          <label>단계<select id="adjS">${STEPS.map((x, i) => `<option value="${i}"${S.pos.s === i ? ' selected' : ''}>${i + 1}. ${x.name}</option>`).join('')}</select></label>
+          <label style="grid-template-columns:auto 1fr"><input type="checkbox" id="adjMark" style="width:24px;min-height:24px">앞 일차는 완료, 뒤 일차는 미완료로 맞추기 (스티커도 함께)</label>
+        </div>
+        <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn small primary" data-act="adjpos">이 진도로 바꾸기</button>
+          <button class="btn small" data-act="resetprog" id="resetProgBtn">진도 초기화</button></div>
+        <p class="muted">진도 초기화: 진도·완료한 날·스티커·복습 기록을 처음으로 돌려요. 별·받은 보상·설정은 그대로예요.</p>
+      </div>
+      <div class="card"><h3>별 조정</h3>
+        <p>지금 별: <b style="font-size:24px">${S.stars}개</b> <span class="muted">(현재 목표에 모은 별 ${Math.max(0, S.stars - S.goalBase)}개)</span></p>
+        <div class="row" style="flex-wrap:wrap"><button class="btn small" data-act="star" data-arg="-10">−10</button><button class="btn small" data-act="star" data-arg="-1">−1</button><button class="btn small" data-act="star" data-arg="1">+1</button><button class="btn small" data-act="star" data-arg="10">+10</button></div>
+        <div class="code-row" style="margin-top:10px"><input id="starSet" type="number" min="0" placeholder="개수"><button class="btn small primary" data-act="starset">이 개수로 맞추기</button></div>
+      </div>
+      <div class="card"><h3>받은 보상 (${S.rewards.length}개)</h3>
+        ${S.rewards.length ? `<ol class="list">${S.rewards.map((r, i) => `<li>${esc(r.date)} — ${esc(r.text)} (별 ${r.stars}개) <button class="btn small" style="min-height:36px;padding:4px 10px" data-act="delrw" data-arg="${i}">삭제</button></li>`).join('')}</ol>` : '<p class="muted">아직 없어요. 목표를 달성하면 아래 설정의 “🎁 보상 줬어요”를 눌러 기록하세요.</p>'}
+      </div>
       <div class="card"><h3>진도 옮기기 (기기끼리 연동이 안 될 때)</h3>
         <p>이 기기의 현재 진도 코드: <b style="font-size:24px">${code}</b> <span class="muted">(주제-일차-단계)</span></p>
         <div class="code-row"><input id="pcode" placeholder="예: 4-3-1"><button class="btn small primary" data-act="setpos">이 진도로 맞추기</button></div>
         <p class="muted">별·스티커·복습 기록까지 모두 옮기려면 아래 백업 코드를 복사해 다른 기기의 같은 칸에 붙여넣고 “가져오기”를 누르세요.</p>
         <textarea id="backup" placeholder="백업 코드"></textarea>
-        <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn small" data-act="export">내보내기(복사)</button><button class="btn small" data-act="import">가져오기</button></div>
+        <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn small" data-act="export">내보내기(복사)</button><button class="btn small" data-act="import">가져오기</button>
+          <button class="btn small" data-act="savefile">💾 백업 파일 저장</button><label class="btn small" style="cursor:pointer">📂 백업 파일 불러오기<input type="file" id="loadFile" accept=".json,application/json,text/plain" hidden></label></div>
+        <p class="muted">앱을 지웠다 다시 설치하기 전에는 “백업 파일 저장”을 꼭 눌러두세요.</p>
       </div>
       <div class="card"><h3>설정</h3><div class="form">
         <label>영어 이름<input data-set="childName" value="${esc(st.childName)}"></label>
@@ -737,7 +782,7 @@
       <div class="row" style="margin-top:12px;flex-wrap:wrap">
         <button class="btn small" data-act="unlock">오늘 시간 잠금 풀기</button>
         <button class="btn small" data-act="gave">🎁 보상 줬어요 (목표 새로 시작)</button>
-        <button class="btn small" data-act="reset" id="resetBtn">전체 초기화</button>
+        <button class="btn small" data-act="reset" id="resetBtn">전체 초기화 (별·보상·설정까지)</button>
       </div></div>
       <div class="card"><h3>안내</h3><ul class="list">
         <li>단어·질문 수정은 <b>content.js</b> 파일에서 해요. 고친 뒤 <b>sw.js</b>의 VERSION을 올리면 설치된 앱에 반영돼요.</li>
@@ -748,14 +793,37 @@
       home: homeScreen,
       setpos: () => { const p = parseCode(document.getElementById('pcode').value); if (!p) return toast('예: 4-3-1 처럼 적어주세요'); S.pos = p; save(); toast(`진도를 ${p.t + 1}-${p.d}-${p.s + 1}로 맞췄어요`); parentScreen(); },
       export: async () => { const c = exportCode(); const ta = document.getElementById('backup'); ta.value = c; ta.select(); try { await navigator.clipboard.writeText(c); toast('복사했어요. 다른 기기에 붙여넣으세요'); } catch (e) { toast('코드를 길게 눌러 복사하세요'); } },
-      import: () => {
-        try { const o = JSON.parse(decodeURIComponent(escape(atob(document.getElementById('backup').value.trim())))); if (!o || !o.pos) throw 0; const d = defaults(); S = Object.assign(d, o, { settings: Object.assign(d.settings, o.settings || {}) }); save(); toast('가져왔어요!'); parentScreen(); }
-        catch (e) { toast('백업 코드가 올바르지 않아요'); }
+      import: () => { if (restore(document.getElementById('backup').value)) { toast('가져왔어요!'); parentScreen(); } else toast('백업 코드가 올바르지 않아요'); },
+      savefile: () => {
+        try {
+          const blob = new Blob([JSON.stringify(S)], { type: 'application/json' });
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `yuni-english-backup-${today()}.json`;
+          document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+          toast('백업 파일을 저장했어요 (다운로드 폴더)');
+        } catch (e) { toast('저장하지 못했어요. 내보내기(복사)를 이용하세요'); }
       },
+      adjpos: () => {
+        const t = +document.getElementById('adjT').value, d = +document.getElementById('adjD').value, sIdx = +document.getElementById('adjS').value;
+        if (document.getElementById('adjMark').checked) {
+          S.done = {}; S.stickers = {};
+          for (let ti = 0; ti < T.length; ti++) for (let di = 1; di <= DAYS; di++) if (ti < t || (ti === t && di < d)) S.done[`${ti}-${di}`] = today();
+          for (let ti = 0; ti < t; ti++) S.stickers[ti] = today();
+        }
+        S.pos = { t, d, s: sIdx }; save(); toast(`진도를 ${T[t].title} ${d}일차 · ${STEPS[sIdx].name}(으)로 바꿨어요`); parentScreen();
+      },
+      resetprog: (x, btn) => {
+        if (!btn.dataset.sure) { btn.dataset.sure = 1; btn.textContent = '정말 진도 초기화? 한 번 더 누르기'; return; }
+        S.pos = { t: 0, d: 1, s: 0 }; S.done = {}; S.stickers = {}; S.srs = {}; save(); toast('진도를 처음으로 돌렸어요'); parentScreen();
+      },
+      star: a => { S.stars = Math.max(0, S.stars + Number(a)); S.goalBase = Math.min(S.goalBase, S.stars); save(); parentScreen(); },
+      starset: () => { const v = parseInt(document.getElementById('starSet').value, 10); if (!(v >= 0)) return toast('0 이상의 숫자를 적어주세요'); S.stars = v; S.goalBase = Math.min(S.goalBase, S.stars); save(); toast(`별을 ${v}개로 맞췄어요`); parentScreen(); },
+      delrw: (i, btn) => { if (!btn.dataset.sure) { btn.dataset.sure = 1; btn.textContent = '한 번 더 누르면 삭제'; return; } S.rewards.splice(+i, 1); save(); parentScreen(); },
       unlock: () => { S.override = today(); save(); toast('오늘은 시간 제한 없이 할 수 있어요'); },
-      gave: () => { S.goalBase = S.stars; save(); toast('새 목표를 시작해요!'); },
+      gave: () => { S.rewards.push({ date: today(), text: S.settings.goalText, stars: Number(S.settings.goalStars) }); S.goalBase = S.stars; save(); toast('보상을 기록했어요. 새 목표를 시작해요!'); parentScreen(); },
       reset: (x, btn) => { if (btn.dataset.sure) { S = defaults(); save(); toast('초기화했어요'); homeScreen(); } else { btn.dataset.sure = 1; btn.textContent = '정말 초기화? 한 번 더 누르기'; } },
     });
+    const lf = document.getElementById('loadFile');
+    if (lf) lf.addEventListener('change', () => { const f = lf.files[0]; if (!f) return; f.text().then(txt => { if (restore(txt)) { toast('백업을 불러왔어요!'); parentScreen(); } else toast('백업 파일이 올바르지 않아요'); }); });
     document.querySelectorAll('[data-set]').forEach(el => el.addEventListener('change', () => {
       const k = el.dataset.set; S.settings[k] = el.type === 'number' ? Number(el.value) : el.value.trim(); save(); toast('저장했어요');
     }));
@@ -765,6 +833,8 @@
   if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }
+  // 저장된 진도가 브라우저 정리로 지워지지 않게 요청
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* */ }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { hush(); stopRec(); } });
   window.YUNI = { get state() { return S; }, get act() { return L && L.acts[L.i]; }, matches, parseCode, fill }; // 테스트용
   homeScreen();
