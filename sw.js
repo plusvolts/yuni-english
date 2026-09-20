@@ -1,5 +1,5 @@
 /* 오프라인 캐시. content.js 등을 고치면 VERSION 숫자를 올려주세요. */
-const VERSION = 'yuni-english-8';
+const VERSION = 'yuni-english-9';
 const FILES = ['./', 'index.html', 'style.css', 'content.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'audio/index.json', '기획서.md'];
 // 원어민 녹음 파일은 설치 뒤 백그라운드로 모두 받아둬요 (오프라인용)
 const cacheAudio = () => caches.open(VERSION).then(c => fetch('audio/index.json').then(r => r.json()).then(idx => Promise.all([...new Set(Object.values(idx))].map(f => c.match('audio/' + f).then(hit => hit || c.add('audio/' + f).catch(() => {})))))).catch(() => {});

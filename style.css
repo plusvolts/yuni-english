@@ -175,3 +175,9 @@ textarea { min-height: 90px; font-family: ui-monospace, monospace; font-size: 13
 .spec-table th { background: var(--bg); white-space: nowrap; }
 .spec-code { background: var(--bg); padding: 10px 12px; border-radius: 12px; overflow-x: auto; font-size: 14px; }
 .spec-table td:first-child { white-space: nowrap; font-weight: 700; }
+/* 보상 사용완료 표시 (세 앱 공통) */
+.tile.used { opacity: .7; }
+.rw-tag { font-size: 13px; font-weight: 800; padding: 2px 10px; border-radius: 999px; background: #fff3c4; color: #8a5a00; }
+.rw-tag.done { background: #e3f6e8; color: #1f7a3a; }
+.list li.rw-used { color: var(--muted); }
+.btn.rw-check.on { background: #e3f6e8; color: #1f7a3a; }
