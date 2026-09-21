@@ -1,7 +1,7 @@
-# 윤이 영어 자동 테스트: 저장소 폴더에서 python3 -m http.server 8765, test 폴더에서 python3 flow.py tab 1280 800 0 / phone 390 844 1
-import asyncio, sys, json
+# 윤이 영어 자동 테스트: 저장소 폴더에서 python3 -m http.server 8765 (다른 포트는 PORT=8781), test 폴더에서 python3 flow.py tab 1280 800 0 / phone 390 844 1
+import asyncio, sys, json, os
 from playwright.async_api import async_playwright
-URL='http://localhost:8765/'
+URL='http://localhost:%s/' % os.environ.get('PORT', '8765')
 MOCK = r"""
 // 빠른 TTS 목업
 window.speechSynthesis.speak = function(u){ window.__said=(window.__said||[]); window.__said.push(u.text); setTimeout(()=>u.onend&&u.onend(), 5); };
@@ -9,6 +9,10 @@ window.speechSynthesis.cancel = function(){};
 // 음성인식 목업: window.__reply 를 돌려줌
 class FakeSR { start(){ setTimeout(()=>{ const t = (window.__reply||'hello'); this.onresult && this.onresult({results:[[{transcript:t}]]}); this.onend && this.onend(); }, 30);} stop(){} abort(){} }
 Object.defineProperty(window,'webkitSpeechRecognition',{value:FakeSR,configurable:true,writable:true}); Object.defineProperty(window,'SpeechRecognition',{value:FakeSR,configurable:true,writable:true});
+// 공통 65: ko()가 받은 글 모으기 + 한국어 녹음은 실제로 요청하되 빨리 끝내기 (테스트 시간 줄이기)
+window.__KO_LOG = [];
+const _play = HTMLMediaElement.prototype.play;
+HTMLMediaElement.prototype.play = function(){ const p = _play.call(this); if (/audio-ko\//.test(this.src)) { const a = this; const end = () => setTimeout(()=>{ try{ a.pause(); }catch(e){} a.dispatchEvent(new Event('ended')); }, 80); if (a.readyState >= 4) end(); else a.addEventListener('canplaythrough', end, {once:true}); } return p; };
 if(!localStorage.getItem("yuni-english-v1")) localStorage.setItem("yuni-english-v1", JSON.stringify({settings:{}}));
 """
 async def run(name, vw, vh, mobile):
@@ -22,6 +26,7 @@ async def run(name, vw, vh, mobile):
         await ctx.add_init_script(MOCK)
         pg = await ctx.new_page()
         errs=[]; pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('console', lambda m: m.type=='error' and errs.append(m.text))
+        KOREQ=[]; pg.on('request', lambda r: '/audio-ko/' in r.url and r.url.endswith('.mp3') and KOREQ.append(r.url))  # 공통 65: 한국어 녹음 요청
         await pg.goto(URL); await pg.wait_for_timeout(500)
         REQ['REQ-24 주제마다 단어 50·질문 20'] = await pg.evaluate("CONTENT.topics.length===12 && CONTENT.topics.every(t=>t.words.length===50 && t.questions.length===20 && t.words.every(w=>w.d))")
         await pg.screenshot(path=f'../shots/{name}-1-home.png')
@@ -123,6 +128,15 @@ async def run(name, vw, vh, mobile):
                 await pg.evaluate(f"window.__reply={json.dumps(act['ans'])}"); await pg.dispatch_event('[data-mic]','pointerdown'); await pg.wait_for_timeout(600)
                 await pg.wait_for_timeout(5000)
         print(' 64', T64)
+        # 공통 65: 하루 흐름에서 ko()가 읽은 문장이 녹음 목록(audio-ko/index.json)에 얼마나 있는지 (문장 . ! ? 단위, app.js ko()와 같은 규칙)
+        cov = await pg.evaluate("""fetch('audio-ko/index.json').then(r=>r.json()).then(idx=>{ const key=t=>String(t).replace(/\\s+/g,' ').trim();
+          const sen=t=>String(t).split(/(?<=[.!?])\\s+/).map(x=>x.trim()).filter(Boolean); const all=new Set(), miss=new Set();
+          for (const t of window.__KO_LOG) { const parts = idx[key(t)] ? [t] : sen(t); for (const p of parts) { all.add(key(p)); if (!idx[key(p)]) miss.add(key(p)); } }
+          return {n:all.size, miss:[...miss], files:Object.keys(idx).length}; })""")
+        pct = 100 * (cov['n'] - len(cov['miss'])) / max(1, cov['n'])
+        print(f" 65 한국어 녹음: 읽은 문장 {cov['n']}개 중 녹음 있음 {pct:.1f}% (녹음 목록 {cov['files']}개), 녹음 파일 요청 {len(KOREQ)}번, 빠진 문장:", cov['miss'])
+        REQ['REQ-65 읽은 한국어 문장 95% 이상 녹음'] = cov['n'] > 0 and pct >= 95
+        REQ['REQ-65 ko() 때 녹음 파일(audio-ko) 요청'] = len(KOREQ) > 0
         REQ['REQ-18·64 다시 골라 맞히면 별 1개, 같은 문제 별 한 번'] = T64.get('pick') is True
         REQ['REQ-64 말하기 3번 실패 → 정답·다음 ▶, 따라 말하면 별 1개'] = T64.get('rep') is True
         REQ['REQ-64 다음 ▶으로 넘어가면 별 0, 돌아와 맞혀도 0'] = T64.get('say') is True
@@ -184,14 +198,23 @@ async def run(name, vw, vh, mobile):
         REQ['REQ-14 진도 조정'] = '"t":4,"d":3,"s":2' in adj and '"done":42' in adj
         t63.append(await tab_ok('progress'))
         await tab('settings')
-        await pg.evaluate("window.__said=[]"); await pg.click('[data-act=kotest]'); await pg.wait_for_timeout(600)
-        REQ['REQ-20 한국어 끊어 읽기'] = len(await pg.evaluate("window.__said")) >= 3
+        # 공통 65: 녹음 목소리(기본)면 audio-ko 요청·기기 음성 없음 → 기기 음성으로 바꾸면 audio-ko 요청 없이 끊어 읽기(REQ-20)
+        await pg.evaluate("window.__said=[]"); KOREQ.clear(); await pg.click('[data-act=kotest]'); await pg.wait_for_timeout(1500)
+        rec_req = len(KOREQ); rec_said = await pg.evaluate("window.__said.filter(t=>/[가-힣]/.test(t)).length")
+        await pg.select_option('[data-set=koVoiceMode]', 'device'); await pg.wait_for_timeout(150)
+        await pg.evaluate("window.__said=[]"); KOREQ.clear(); await pg.click('[data-act=kotest]'); await pg.wait_for_timeout(800)
+        dev_req = len(KOREQ); dev_said = len(await pg.evaluate("window.__said"))
+        await pg.select_option('[data-set=koVoiceMode]', 'rec'); await pg.wait_for_timeout(150)
+        print(' 65 kotest: 녹음 요청', rec_req, '기기 음성', rec_said, '/ 기기 음성 설정: 녹음 요청', dev_req, '기기 음성', dev_said)
+        REQ['REQ-65 녹음 목소리로 한국어 들어보기'] = rec_req >= 3 and rec_said == 0
+        REQ['REQ-65 기기 음성 설정이면 녹음 안 씀'] = dev_req == 0
+        REQ['REQ-20 한국어 끊어 읽기 (기기 음성)'] = dev_said >= 3
         await tab('manage')
         await pg.click('[data-act=checkver]'); await pg.wait_for_timeout(800)
         REQ['REQ-23 새 버전 확인'] = '최신 버전' in await pg.inner_text('#verInfo')
         await pg.click('[data-act=spec]'); await pg.wait_for_timeout(600)
         spec = await pg.inner_text('#spec'); await pg.screenshot(path=f'../shots/{name}-7d-spec.png')
-        REQ['REQ-21 앱 안 기획서'] = 'REQ-01' in spec and 'REQ-64' in spec
+        REQ['REQ-21 앱 안 기획서'] = 'REQ-01' in spec and 'REQ-65' in spec
         await pg.click('[data-act=back]'); await pg.wait_for_timeout(300)
         t63.append(await tab_ok('manage'))  # 기획서 보고 돌아와도 같은 탭
         await tab('reward')

@@ -1,7 +1,7 @@
 /* 윤이 영어 — 앱 로직 (의존성 없음) */
 (() => {
   'use strict';
-  const APP_VERSION = '1.6.1';
+  const APP_VERSION = '1.7.0';
   const C = window.CONTENT;
   const T = C.topics;
   const DAYS = 10;
@@ -18,7 +18,7 @@
   /* ================= 저장소 ================= */
   function defaults() {
     return {
-      settings: { parentPin: '1234', robotName: '로보', childName: 'Yuni', age: 'seven', hyunRel: 'brother', dailyLimit: 20, voice: 'native', koVoice: '', koRate: 0.9, goalStars: 50, goalText: '아빠와 약속한 선물' },
+      settings: { parentPin: '1234', robotName: '로보', childName: 'Yuni', age: 'seven', hyunRel: 'brother', dailyLimit: 20, voice: 'native', koVoice: '', koVoiceMode: 'rec', koRate: 0.9, goalStars: 50, goalText: '아빠와 약속한 선물' },
       pos: { t: 0, d: 1, s: 0 }, done: {}, stars: 0, goalBase: 0,
       srs: {}, days: [], log: {}, stickers: {}, override: '', rewards: [],
     };
@@ -114,17 +114,56 @@
     }
     return speak(t, 'en-US', slow ? 0.7 : 0.95);
   }
-  // 한국어는 문장부호마다 짧게 끊어서, 조금 천천히 읽어요 (긴 문장이 뭉개지지 않게)
-  async function ko(t) {
+  // 기기 음성(녹음이 없을 때): 문장부호마다 짧게 끊어서, 조금 천천히 읽어요 (긴 문장이 뭉개지지 않게)
+  async function speakDevice(t, rate) {
     const parts = String(t).split(/(?<=[.!?,])\s+/).map(x => x.trim()).filter(Boolean);
-    const my = sayToken; const rate = Number(S.settings.koRate) || 0.9;
+    const my = sayToken;
     for (let i = 0; i < parts.length; i++) {
       if (my !== sayToken) return;
       await speak(parts[i], 'ko-KR', rate);
       if (i < parts.length - 1) await sleep(120);
     }
   }
-  function hush() { sayToken++; try { speechSynthesis.cancel(); } catch (e) { /* */ } if (curAudio) { try { curAudio.pause(); } catch (e) { /* */ } curAudio = null; } }
+  /* ================= 한국어 녹음 재생 (공통 65번) — 세 앱 같은 코드 (plan/0_COMMON_spec.md 5-2) =================
+     audio-ko/index.json = { "문장": "파일.mp3" } (tools/make_ko_audio.py로 만든 Supertonic 3 목소리 6, 속도 보통).
+     ko(t): ① 전체 문장 녹음이 있으면 재생 ② 없으면 문장(. ! ?) 단위로 나눠 녹음이 있는 문장은 재생, 없는 문장만 기기 음성
+     아빠 화면 설정 koVoiceMode: 'rec'(녹음 목소리, 기본) | 'device'(기기 음성). 속도 설정 koRate는 녹음에도 적용(0.9 = 보통) */
+  let KO_IDX = null; let koAudio = null; let koDone = null; let koChain = Promise.resolve();
+  const koKey = t => String(t).replace(/\s+/g, ' ').trim();
+  fetch('audio-ko/index.json').then(r => (r.ok ? r.json() : {})).then(j => { KO_IDX = j || {}; }).catch(() => { KO_IDX = {}; });
+  const koRec = t => (S.settings.koVoiceMode !== 'device' && KO_IDX && KO_IDX[koKey(t)]) || null;
+  const koSentences = t => String(t).split(/(?<=[.!?])\s+/).map(x => x.trim()).filter(Boolean);
+  function koStop() { const d = koDone; if (koAudio) { try { koAudio.pause(); } catch (e) { /* */ } koAudio = null; } if (d) d(false); }
+  // 국어 앱: 녹음도 기기 음성처럼 차례로 재생해요(재생 중에 새 말이 오면 끝난 뒤에). hush()가 sayToken을 올리고 koStop()으로 모두 멈춰요.
+  // (받아쓰기 정답 뒤 낱말 읽기 + "은후: 고마워!"처럼 겹칠 때 앞 재생이 끊겨 다음 문제로 안 넘어가던 문제 방지)
+  function playKo(file, rate) {
+    const my = sayToken;
+    const p = koChain.then(() => (my !== sayToken ? false : new Promise(resolve => {
+      const a = new Audio('audio-ko/' + file); koAudio = a;
+      a.playbackRate = Math.max(0.7, Math.min(1.3, (Number(rate) || 0.9) / 0.9));
+      let fin = false;
+      const done = ok => { if (fin) return; fin = true; if (koAudio === a) koAudio = null; if (koDone === done) koDone = null; resolve(ok); };
+      koDone = done;
+      a.onended = () => done(true); a.onerror = () => done(false);
+      a.play().catch(() => done(false));
+      setTimeout(() => done(true), 20000); // 끝 신호가 안 와도 다음 말이 막히지 않게
+    })));
+    koChain = p.catch(() => false); return p;
+  }
+  async function ko(t) {
+    if (window.__KO_LOG) window.__KO_LOG.push(String(t)); // 테스트·문장 수집용
+    const my = sayToken; const rate = Number(S.settings.koRate) || 0.9;
+    const whole = koRec(t);
+    if (whole) { if (await playKo(whole, rate)) return; if (my !== sayToken) return; }
+    const parts = koSentences(t);
+    for (let i = 0; i < parts.length; i++) {
+      if (my !== sayToken) return;
+      const f = koRec(parts[i]);
+      if (!(f && await playKo(f, rate))) { if (my !== sayToken) return; await speakDevice(parts[i], rate); }
+      if (i < parts.length - 1) await sleep(120);
+    }
+  }
+  function hush() { sayToken++; koStop(); try { speechSynthesis.cancel(); } catch (e) { /* */ } if (curAudio) { try { curAudio.pause(); } catch (e) { /* */ } curAudio = null; } }
   const LINES = C.lines || {};
   const praise = () => fill(pick(LINES.praise || ['Great job!']));
 
@@ -930,7 +969,7 @@
   }
   async function applyUpdate() {
     toast('새 버전을 받는 중이에요…');
-    const files = ['./', 'index.html', 'app.js', 'content.js', 'style.css', 'sw.js', 'manifest.webmanifest', 'audio/index.json', '기획서.md'];
+    const files = ['./', 'index.html', 'app.js', 'content.js', 'style.css', 'sw.js', 'manifest.webmanifest', 'audio/index.json', 'audio-ko/index.json', '기획서.md'];
     try { await Promise.all(files.map(u => fetch(encodeURI(u), { cache: 'reload' }).catch(() => {}))); } catch (e) { /* */ }
     try { if (navigator.serviceWorker) for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister(); } catch (e) { /* */ }
     try { if (window.caches) for (const k of await caches.keys()) await caches.delete(k); } catch (e) { /* */ }
@@ -1053,7 +1092,8 @@
       ${ptabPanel('settings', `
       <div class="card"><h3>설정</h3><div class="form">
         <label>영어 이름<input data-set="childName" value="${esc(st.childName)}"></label>
-        <label>한국어 목소리<select data-set="koVoice"><option value="">자동 (구글 음성 우선)</option>${koVoices().map(v => `<option value="${esc(v.voiceURI || v.name)}"${st.koVoice === (v.voiceURI || v.name) ? ' selected' : ''}>${esc(v.name)}${v.localService ? '' : ' (온라인)'}</option>`).join('')}</select></label>
+        <label>한국어 읽기<select data-set="koVoiceMode">${[['rec', '녹음 목소리 (추천)'], ['device', '기기 음성']].map(([v, n]) => `<option value="${v}"${(st.koVoiceMode || 'rec') === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label>한국어 목소리 (기기 음성)<select data-set="koVoice"><option value="">자동 (구글 음성 우선)</option>${koVoices().map(v => `<option value="${esc(v.voiceURI || v.name)}"${st.koVoice === (v.voiceURI || v.name) ? ' selected' : ''}>${esc(v.name)}${v.localService ? '' : ' (온라인)'}</option>`).join('')}</select></label>
         <label>한국어 말 속도<select data-set="koRate">${[['0.8', '천천히'], ['0.9', '보통 (추천)'], ['1', '빠르게']].map(([v, n]) => `<option value="${v}"${Number(st.koRate) === Number(v) ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
         <div class="row" style="flex-wrap:wrap"><button class="btn small" data-act="kotest">🔈 한국어 들어보기</button>
           <span class="muted">${koVoices().length ? `이 기기의 한국어 목소리 ${koVoices().length}개` : '⚠️ 한국어 목소리를 못 찾았어요. 아래 안내를 보세요'}</span></div>
