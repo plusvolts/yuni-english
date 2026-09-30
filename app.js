@@ -1,10 +1,11 @@
 /* 윤이 영어 — 앱 로직 (의존성 없음) */
 (() => {
   'use strict';
-  const APP_VERSION = '1.7.0';
+  const APP_VERSION = '1.8.0';
   const C = window.CONTENT;
   const T = C.topics;
   const DAYS = 10;
+  const gradeOf = t => (T[t] && T[t].grade) || 1; // 학년 (v1.8.0)
   const STEPS = [
     { id: 'greet', name: '인사', icon: '👋' },
     { id: 'review', name: '복습', icon: '🔁' },
@@ -20,7 +21,7 @@
     return {
       settings: { parentPin: '1234', robotName: '로보', childName: 'Yuni', age: 'seven', hyunRel: 'brother', dailyLimit: 20, voice: 'native', koVoice: '', koVoiceMode: 'rec', koRate: 0.9, goalStars: 50, goalText: '아빠와 약속한 선물' },
       pos: { t: 0, d: 1, s: 0 }, done: {}, stars: 0, goalBase: 0,
-      srs: {}, days: [], log: {}, stickers: {}, override: '', rewards: [],
+      srs: {}, recent: {}, days: [], log: {}, stickers: {}, override: '', rewards: [],
     };
   }
   function load() {
@@ -274,7 +275,7 @@
 
   function posLabel() {
     const { t, d, s } = S.pos; const tp = T[t];
-    return `${tp.icon} ${tp.title} ${d}일차 · ${STEPS[s].name}${s > 0 ? '부터 이어하기' : ''}`;
+    return `${gradeOf(t)}학년 · ${tp.icon} ${tp.title} ${d}일차 · ${STEPS[s].name}${s > 0 ? '부터 이어하기' : ''}`;
   }
   function homeScreen() {
     const g = Math.max(0, S.stars - S.goalBase); const goal = Math.max(1, Number(S.settings.goalStars));
@@ -321,17 +322,26 @@
     if (t < 0 || t >= T.length || d < 1 || d > DAYS || s < 0 || s >= STEPS.length) return null;
     return { t, d, s };
   }
-  function pickerScreen(level, t, d) {
+  // 학년 (v1.8.0): 1학년 12주제 · 2학년 8주제 · 3학년 8주제. 주제 번호(진도 코드)는 1학년부터 이어서 세요
+  const GRADES = [...new Set(T.map((_, i) => gradeOf(i)))].sort((a, b) => a - b);
+  const gradeTopics = g => T.map((tp, i) => i).filter(i => gradeOf(i) === g);
+  const gradeDone = g => gradeTopics(g).reduce((n, i) => n + doneCount(i), 0);
+  function gradeTabs(g, act) {
+    return `<div class="grade-tabs" role="tablist">${GRADES.map(x => `<button class="grade-tab${x === g ? ' on' : ''}" role="tab" aria-selected="${x === g}" data-act="${act}" data-arg="${x}">${x}학년<small>${gradeDone(x)} / ${gradeTopics(x).length * DAYS}일</small></button>`).join('')}</div>`;
+  }
+  function pickerScreen(level, t, d, g) {
     let body = '';
     if (level === 'topics') {
+      g = g || gradeOf(S.pos.t);
       body = `<h2 class="title">어떤 주제를 할까?</h2>
-        <div class="grid">${T.map((tp, i) => `<button class="tile${tp.fav ? ' fav' : ''}${S.pos.t === i ? ' now' : ''}" data-act="topic" data-arg="${i}">
-          <span class="em">${tp.icon}</span><b>${i + 1}. ${esc(tp.title)}</b><small>${doneCount(i)} / ${DAYS}일</small></button>`).join('')}</div>
+        ${gradeTabs(g, 'grade')}
+        <div class="grid">${gradeTopics(g).map(i => { const tp = T[i]; return `<button class="tile${tp.fav ? ' fav' : ''}${S.pos.t === i ? ' now' : ''}" data-act="topic" data-arg="${i}">
+          <span class="em">${tp.icon}</span><b>${i + 1}. ${esc(tp.title)}</b><small>${doneCount(i)} / ${DAYS}일</small></button>`; }).join('')}</div>
         <div class="card code-row"><b>진도 코드</b><input id="code" inputmode="numeric" placeholder="예: 4-3"><button class="btn small primary" data-act="code">바로 가기</button>
           <span class="muted">주제-일차(-단계). 다른 기기에서 하던 곳부터 시작해요.</span></div>`;
     } else if (level === 'days') {
       const tp = T[t];
-      body = `<h2 class="title">${tp.icon} ${esc(tp.title)} — 며칠째 할까?</h2>
+      body = `<h2 class="title">${gradeOf(t)}학년 ${tp.icon} ${esc(tp.title)} — 며칠째 할까?</h2>
         <div class="days">${Array.from({ length: DAYS }, (_, i) => i + 1).map(dd => `<button class="day${S.done[`${t}-${dd}`] ? ' done' : ''}${S.pos.t === t && S.pos.d === dd ? ' now' : ''}" data-act="day" data-arg="${dd}">${dd}</button>`).join('')}</div>`;
     } else {
       const tp = T[t];
@@ -341,8 +351,9 @@
     render('picker', `<div class="screen">
       <div class="topbar"><button class="icon-btn" data-act="back" aria-label="뒤로">⬅️</button><div class="spacer"></div><button class="icon-btn" data-act="home" aria-label="처음으로">🏠</button></div>
       ${body}</div>`, {
-      back: () => level === 'topics' ? homeScreen() : level === 'days' ? pickerScreen('topics') : pickerScreen('days', t),
+      back: () => level === 'topics' ? homeScreen() : level === 'days' ? pickerScreen('topics', null, null, gradeOf(t)) : pickerScreen('days', t),
       home: homeScreen,
+      grade: a => pickerScreen('topics', null, null, +a),
       topic: a => pickerScreen('days', +a),
       day: a => pickerScreen('steps', t, +a),
       step: a => startLesson(t, d, +a),
@@ -374,8 +385,9 @@
   function stickerScreen() {
     render('stickers', `<div class="screen">
       <div class="topbar"><button class="icon-btn" data-act="home" aria-label="처음으로">🏠</button><h2 class="title">📒 스티커북</h2></div>
-      <div class="grid">${T.map((tp, i) => `<button class="tile${S.stickers[i] ? '' : ' locked'}" data-act="st" data-arg="${i}">
-        <span class="em">${S.stickers[i] ? tp.sticker : '❔'}</span><b>${esc(tp.title)}</b><small>${doneCount(i)} / ${DAYS}일</small></button>`).join('')}</div>
+      ${GRADES.map(g => `<h3 class="grade-head">${g}학년 <small>스티커 ${gradeTopics(g).filter(i => S.stickers[i]).length} / ${gradeTopics(g).length}</small></h3>
+      <div class="grid">${gradeTopics(g).map(i => { const tp = T[i]; return `<button class="tile${S.stickers[i] ? '' : ' locked'}" data-act="st" data-arg="${i}">
+        <span class="em">${S.stickers[i] ? tp.sticker : '❔'}</span><b>${esc(tp.title)}</b><small>${doneCount(i)} / ${DAYS}일</small></button>`; }).join('')}</div>`).join('')}
       <p class="muted">주제 하나를 10일 모두 끝내면 스티커를 받아요. 스티커를 누르면 단어를 다시 들을 수 있어요.</p>
     </div>`, {
       home: homeScreen,
@@ -389,10 +401,32 @@
   }
 
   /* ================= 수업 만들기 ================= */
-  /* 하루 = 새 단어 5개(목록 순서대로) + 앞 일차 단어 복습 3개, 새 질문 2개 + 앞 질문 복습 1개 */
-  const NEW_PER_DAY = 5, OLD_PER_DAY = 3, Q_PER_DAY = 2;
+  /* 하루(v1.8.0) = 새 단어 5개(목록 순서대로) + 복습 단어 5개(퀴즈)·3개(말하기, 퀴즈와 다른 단어)
+     퀴즈 12문제 = 새 단어 5 + 복습 5 + 새 단어 2개는 다른 방식으로 한 번 더 / 말하기 8 = 새 5 + 복습 3
+     대화 4 = 새 질문 2 + 같은 주제 앞 질문 1 + 다른 주제 질문 1 / 복습 단계 5 = 복습할 날 된 단어 + 여러 주제에서 고른 단어
+     같은 단어만 반복되지 않게: 최근에 복습한 단어(S.recent)는 뒤로 미루고, 약한 단어는 한 번에 2개까지만 */
+  const NEW_PER_DAY = 5, OLD_PER_DAY = 5, SPEAK_OLD = 3, Q_PER_DAY = 2, REVIEW_N = 5, WEAK_MAX = 2;
   // 약한 단어가 먼저 (틀린 적 많음·아직 안 봄 → 높은 점수, "알아요" → 낮은 점수)
   const weakScore = (t, w) => { const r = S.srs[wkey(t, w)]; return r ? (r.mastered ? -5 : 0) + r.wrong * 2 - r.streak - (r.seen > 3 ? 1 : 0) : 1; };
+  // 최근에 복습으로 나온 날 → 0(오늘·어제) ~ 4(한참 전·처음)
+  function freshness(t, w) {
+    const d = S.recent[wkey(t, w)]; if (!d) return 4;
+    const ago = Math.round((new Date(today() + 'T12:00:00') - new Date(d + 'T12:00:00')) / 864e5);
+    return ago <= 1 ? 0 : ago <= 3 ? 1 : ago <= 7 ? 2 : 3;
+  }
+  // 여러 후보에서 골고루 고르기: 약한 단어 최대 2개 → 나머지는 오래 안 나온 단어부터(같은 무리 안에서는 무작위)
+  function pickDiverse(pool, n, skip) {
+    const seen = new Set(skip || []); const uniq = [];
+    for (const x of pool) { const k = wkey(x.t, x.w); if (!seen.has(k)) { seen.add(k); uniq.push(x); } }
+    const out = [];
+    const weak = shuffle(uniq.filter(x => weakScore(x.t, x.w) >= 2 && freshness(x.t, x.w) > 0)).sort((a, b) => weakScore(b.t, b.w) - weakScore(a.t, a.w));
+    out.push(...weak.slice(0, Math.min(WEAK_MAX, n)));
+    const rest = shuffle(uniq.filter(x => !out.includes(x))).sort((a, b) => freshness(b.t, b.w) - freshness(a.t, a.w));
+    for (const x of rest) { if (out.length >= n) break; out.push(x); }
+    return out;
+  }
+  function touchRecent(items) { const td = today(); items.forEach(x => { S.recent[wkey(x.t, x.w)] = td; }); }
+  function pruneRecent() { const lim = addDays(-30); for (const k of Object.keys(S.recent)) if (S.recent[k] < lim) delete S.recent[k]; }
   function newWords(t, d) {
     const ws = T[t].words;
     const part = ws.slice((d - 1) * NEW_PER_DAY, d * NEW_PER_DAY);
@@ -400,30 +434,40 @@
     // 단어가 모자라면(아빠가 줄였을 때): 약한 단어 먼저, 나머지는 섞어서
     return shuffle(ws).sort((a, b) => weakScore(t, b) - weakScore(t, a)).slice(0, NEW_PER_DAY);
   }
-  // 앞 일차에 배운 단어 중 복습할 것 (같은 주제 우선, 1일차면 앞 주제에서)
-  function oldWords(t, d, today5) {
-    const skip = new Set(today5.map(w => w.en));
-    let pool = T[t].words.slice(0, (d - 1) * NEW_PER_DAY).filter(w => !skip.has(w.en)).map(w => ({ t, w }));
-    if (!pool.length) pool = learnedWords().filter(x => x.t !== t);
-    return shuffle(pool).sort((a, b) => weakScore(b.t, b.w) - weakScore(a.t, a.w)).slice(0, OLD_PER_DAY);
+  // 복습 단어: 같은 주제 앞 일차 단어(n의 60%) + 다른 주제에서 배운 단어(같은 학년 이하), 모자라면 서로 채워요
+  function oldWords(t, d, today5, n, skipKeys) {
+    const skip = new Set((skipKeys || []).concat(today5.map(w => wkey(t, w))));
+    const same = T[t].words.slice(0, (d - 1) * NEW_PER_DAY).map(w => ({ t, w }));
+    const other = learnedWords().filter(x => x.t !== t && gradeOf(x.t) <= gradeOf(t));
+    const nSame = other.length ? Math.ceil(n * 0.6) : n;
+    const a = pickDiverse(same, Math.min(nSame, n), skip);
+    a.forEach(x => skip.add(wkey(x.t, x.w)));
+    const b = pickDiverse(other, n - a.length, skip);
+    b.forEach(x => skip.add(wkey(x.t, x.w)));
+    const c = a.length + b.length < n ? pickDiverse(same.concat(other), n - a.length - b.length, skip) : [];
+    return shuffle(a.concat(b, c));
   }
   function dayQuestions(t, d) {
     const qs = T[t].questions; const out = [];
     for (let i = 0; i < Q_PER_DAY; i++) { const k = (d - 1) * Q_PER_DAY + i; out.push({ t, q: qs[k] || qs[k % qs.length] }); }
-    // 복습 질문 1개: 같은 주제 앞 일차 → 없으면 앞 주제
+    // 복습 질문: 같은 주제 앞 일차 1개 + 다른 주제(해 본 주제, 같은 학년 이하) 1개
     const earlier = qs.slice(0, Math.min(qs.length, (d - 1) * Q_PER_DAY)).filter(q => !out.some(o => o.q === q));
     if (earlier.length) out.push({ t, q: pick(earlier) });
-    else if (t > 0) { const pt = Math.floor(Math.random() * t); out.push({ t: pt, q: pick(T[pt].questions) }); }
+    const tried = T.map((_, i) => i).filter(i => i !== t && gradeOf(i) <= gradeOf(t) && (doneCount(i) > 0 || i < t));
+    if (tried.length) { const pt = pick(tried); out.push({ t: pt, q: pick(T[pt].questions) }); }
+    else if (!earlier.length) { const rest = qs.filter(q => !out.some(o => o.q === q)); if (rest.length) out.push({ t, q: pick(rest) }); }
     return out;
   }
+  const keyToItem = k => { const i = k.indexOf(':'); const t = +k.slice(0, i); const w = T[t] && T[t].words.find(x => x.en === k.slice(i + 1)); return w ? { t, w } : null; };
   function dueReviews() {
     const td = today();
-    return Object.entries(S.srs).filter(([, r]) => r.due && r.due <= td).sort((a, b) => a[1].due.localeCompare(b[1].due)).slice(0, 3)
-      .map(([k]) => { const i = k.indexOf(':'); const t = +k.slice(0, i); const w = T[t] && T[t].words.find(x => x.en === k.slice(i + 1)); return w ? { t, w } : null; }).filter(Boolean);
+    return Object.entries(S.srs).filter(([, r]) => r.due && r.due <= td).map(([k]) => keyToItem(k)).filter(Boolean);
   }
   function learnedWords() {
-    return Object.entries(S.srs).filter(([, r]) => r.learned).map(([k]) => { const i = k.indexOf(':'); const t = +k.slice(0, i); const w = T[t] && T[t].words.find(x => x.en === k.slice(i + 1)); return w ? { t, w } : null; }).filter(Boolean);
+    return Object.entries(S.srs).filter(([, r]) => r.learned).map(([k]) => keyToItem(k)).filter(Boolean);
   }
+  // 같은 단어가 바로 이어서 나오지 않았는지
+  const noAdj = a => a.every((x, i) => !i || x.w !== a[i - 1].w);
   // 같은 날 같은 단계는 한 번 만든 문제를 그대로 써요 (◀ 이전 버튼으로 돌아가도 같은 문제)
   function buildStep(t, d, s) {
     if (L && L.t === t && L.d === d && L.built) { if (!L.built[s]) L.built[s] = makeStep(t, d, s); return L.built[s]; }
@@ -433,25 +477,34 @@
     const id = STEPS[s].id;
     if (id === 'greet') return [{ type: 'greet' }];
     if (id === 'review') {
-      let items = dueReviews();
-      if (!items.length) items = shuffle(learnedWords()).slice(0, 2);
+      // 복습할 날이 된 단어(최대 3개) + 여러 주제에서 배운 단어로 5문제, 오늘 퀴즈·말하기 복습 단어와 겹치지 않게
+      const skip = (L ? L.old.concat(L.old2) : []).map(x => wkey(x.t, x.w)).concat((L ? L.words : []).map(w => wkey(t, w)));
+      const due = pickDiverse(dueReviews(), 3, skip);
+      const more = pickDiverse(learnedWords().filter(x => gradeOf(x.t) <= gradeOf(t)), REVIEW_N - due.length, skip.concat(due.map(x => wkey(x.t, x.w))));
+      const items = due.concat(more);
       if (!items.length) return [{ type: 'msg', text: '복습할 단어가 아직 없어요! 바로 새 단어로 가요 🚀' }];
-      return items.map(x => ({ type: 'pick-pic', t: x.t, w: x.w, review: true }));
+      touchRecent(items); save();
+      return shuffle(items).map((x, i) => ({ type: i % 2 ? 'pick-ko' : 'pick-pic', t: x.t, w: x.w, review: true }));
     }
     if (id === 'new') {
-      // 새 단어 소개 → 새 단어 + 앞 일차 단어 섞어서 퀴즈
+      // 새 단어 소개 5 → 퀴즈 12 (새 단어 5 + 복습 5 + 새 단어 2개는 다른 방식으로 한 번 더)
       const intros = L.words.map(w => ({ type: 'intro', t, w }));
-      const items = L.words.map(w => ({ t, w })).concat(L.old.map(x => ({ t: x.t, w: x.w, old: true })));
-      const quiz = shuffle(items).map((x, i) => ({ type: i % 2 ? 'pick-ko' : 'pick-pic', t: x.t, w: x.w, old: x.old }));
-      return intros.concat(quiz);
+      let quiz = [];
+      for (let k = 0; k < 40 && (!quiz.length || !noAdj(quiz)); k++) {
+        const first = shuffle(L.words.map(w => ({ t, w })).concat(L.old.map(x => ({ t: x.t, w: x.w, old: true }))));
+        first.forEach((x, i) => { x.type = i % 2 ? 'pick-ko' : 'pick-pic'; });
+        const twice = shuffle(first.filter(x => !x.old)).slice(0, 2).map(x => ({ t: x.t, w: x.w, type: x.type === 'pick-ko' ? 'pick-pic' : 'pick-ko' }));
+        quiz = first.concat(shuffle(twice.concat(first.splice(Math.ceil(first.length / 2))))); // 두 번째 나오는 단어는 뒤쪽 절반에
+      }
+      return intros.concat(quiz.map(x => ({ type: x.type, t: x.t, w: x.w, old: x.old })));
     }
     if (id === 'speak') {
-      // 새 단어 5개 + 앞 일차 단어 2개. 처음 두 개는 따라 말하기
-      const items = shuffle(L.words.map(w => ({ t, w }))).concat(L.old.slice(0, 2).map(x => ({ t: x.t, w: x.w, old: true })));
+      // 새 단어 5개 + 퀴즈와 다른 복습 단어 3개. 처음 두 개는 따라 말하기
+      const items = shuffle(L.words.map(w => ({ t, w }))).concat(L.old2.map(x => ({ t: x.t, w: x.w, old: true })));
       const ordered = items.slice(0, 2).concat(shuffle(items.slice(2)));
       return ordered.map((x, i) => ({ type: i < 2 ? 'repeat' : 'say-en', t: x.t, w: x.w, old: x.old, friend: i >= 2 && Math.random() < 0.5 ? pick(['hyun', 'chorok']) : null }));
     }
-    // talk: 오늘의 새 질문 2개 + 복습 질문 1개
+    // talk: 오늘의 새 질문 2개 + 복습 질문 2개
     return dayQuestions(t, d).map(x => ({ type: 'talk', t: x.t, q: x.q }));
   }
 
@@ -462,7 +515,10 @@
     if (!(t >= 0 && t < T.length)) t = 0;
     S.pos = { t, d, s }; if (!S.days.includes(today())) S.days.push(today()); save();
     L = { t, d, s, acts: [], i: 0, earned: 0, heardKo: {}, awarded: {}, words: newWords(t, d), built: {} };
-    L.old = oldWords(t, d, L.words);
+    pruneRecent();
+    L.old = oldWords(t, d, L.words, OLD_PER_DAY);
+    L.old2 = oldWords(t, d, L.words, SPEAK_OLD, L.old.map(x => wkey(x.t, x.w)));
+    touchRecent(L.old.concat(L.old2)); save();
     L.acts = buildStep(t, d, s);
     showAct();
   }
@@ -602,9 +658,15 @@
     })();
   }
 
+  // 보기: 같은 주제 단어 반 + 같은 학년 다른 주제 단어 반 (v1.8.0, 늘 같은 보기만 나오지 않게)
   function choiceSet(t, w, n) {
-    const others = shuffle(T[t].words.filter(x => x.en !== w.en && x.img !== w.img && x.ko !== w.ko)).slice(0, n - 1);
-    return shuffle([w, ...others]);
+    const out = [w]; const ok = x => out.every(o => o.en !== x.en && o.img !== x.img && o.ko !== x.ko);
+    const same = shuffle(T[t].words);
+    const other = shuffle(T.filter((tp, i) => i !== t && (tp.grade || 1) === gradeOf(t)).flatMap(tp => tp.words));
+    const nSame = Math.ceil((n - 1) / 2);
+    for (const x of same) { if (out.length > nSame) break; if (ok(x)) out.push(x); }
+    for (const x of other.concat(same)) { if (out.length >= n) break; if (ok(x)) out.push(x); }
+    return shuffle(out);
   }
   function pickHandlers(a, attemptsRef) {
     const w = a.w;
@@ -837,6 +899,7 @@
     if (doneCount(t) >= DAYS && !S.stickers[t]) { S.stickers[t] = today(); newSticker = true; }
     // 다음 진도
     let nt = t, nd = d + 1; if (nd > DAYS) { nd = 1; nt = (t + 1) % T.length; }
+    const gradeUp = gradeOf(nt) > gradeOf(t);
     S.pos = { t: nt, d: nd, s: 0 };
     const bonus = Math.max(0, Math.min(DAY_BONUS, DAY_STAR_MAX - todayLog().stars));
     S.stars += bonus; L.earned += bonus; todayLog().stars += bonus; save();
@@ -848,6 +911,7 @@
       ${bonus ? `<div class="muted" style="font-weight:800;margin-top:-10px">끝까지 한 보너스 ⭐${bonus} 포함</div>` : ''}
       <div class="card chant-card" id="chant" hidden></div>
       ${newSticker ? `<div class="sticker-new">${tp.sticker}</div><div class="bubble">${esc(tp.title)} 스티커를 받았어요!</div>` : ''}
+      ${gradeUp ? `<div class="bubble">🎓 ${gradeOf(t)}학년 영어를 모두 끝냈어요! 내일부터 ${gradeOf(nt)}학년 영어!</div>` : ''}
       ${tp.mission ? `<div class="card mission">🧪 ${esc(tp.mission)}</div>` : ''}
       <div class="home-links">
         <button class="btn" data-act="chant">🎵 오늘 단어 노래</button>
@@ -1077,9 +1141,9 @@
       `)}
       ${ptabPanel('progress', `
       <div class="card"><h3>진도 조정</h3>
-        <p>지금 진도: <b>${esc(T[S.pos.t].title)} ${S.pos.d}일차 · ${STEPS[S.pos.s].name}</b> <span class="muted">(코드 ${code})</span></p>
+        <p>지금 진도: <b>${gradeOf(S.pos.t)}학년 ${esc(T[S.pos.t].title)} ${S.pos.d}일차 · ${STEPS[S.pos.s].name}</b> <span class="muted">(코드 ${code})</span></p>
         <div class="form">
-          <label>주제<select id="adjT">${T.map((tp, i) => `<option value="${i}"${S.pos.t === i ? ' selected' : ''}>${i + 1}. ${esc(tp.title)} (${doneCount(i)}/${DAYS}일)</option>`).join('')}</select></label>
+          <label>주제<select id="adjT">${T.map((tp, i) => `<option value="${i}"${S.pos.t === i ? ' selected' : ''}>[${gradeOf(i)}학년] ${i + 1}. ${esc(tp.title)} (${doneCount(i)}/${DAYS}일)</option>`).join('')}</select></label>
           <label>일차<select id="adjD">${Array.from({ length: DAYS }, (_, i) => `<option value="${i + 1}"${S.pos.d === i + 1 ? ' selected' : ''}>${i + 1}일차</option>`).join('')}</select></label>
           <label>단계<select id="adjS">${STEPS.map((x, i) => `<option value="${i}"${S.pos.s === i ? ' selected' : ''}>${i + 1}. ${x.name}</option>`).join('')}</select></label>
           <label style="grid-template-columns:auto 1fr"><input type="checkbox" id="adjMark" style="width:24px;min-height:24px">앞 일차는 완료, 뒤 일차는 미완료로 맞추기 (스티커도 함께)</label>
@@ -1160,7 +1224,7 @@
       },
       resetprog: (x, btn) => {
         if (!btn.dataset.sure) { btn.dataset.sure = 1; btn.textContent = '정말 진도 초기화? 한 번 더 누르기'; return; }
-        S.pos = { t: 0, d: 1, s: 0 }; S.done = {}; S.stickers = {}; S.srs = {}; save(); toast('진도를 처음으로 돌렸어요'); parentScreen();
+        S.pos = { t: 0, d: 1, s: 0 }; S.done = {}; S.stickers = {}; S.srs = {}; S.recent = {}; save(); toast('진도를 처음으로 돌렸어요'); parentScreen();
       },
       star: a => { S.stars = Math.max(0, S.stars + Number(a)); S.goalBase = Math.min(S.goalBase, S.stars); save(); parentScreen(); },
       starset: () => { const v = parseInt(document.getElementById('starSet').value, 10); if (!(v >= 0)) return toast('0 이상의 숫자를 적어주세요'); S.stars = v; S.goalBase = Math.min(S.goalBase, S.stars); save(); toast(`별을 ${v}개로 맞췄어요`); parentScreen(); },
@@ -1197,7 +1261,7 @@
   // 저장된 진도가 브라우저 정리로 지워지지 않게 요청
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* */ }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { hush(); stopRec(); } });
-  window.YUNI = { get state() { return S; }, get act() { return L && L.acts[L.i]; }, get lesson() { return L; }, buildStep: s => buildStep(L.t, L.d, s), matches, parseCode, fill }; // 테스트용
+  window.YUNI = { get state() { return S; }, get act() { return L && L.acts[L.i]; }, get lesson() { return L; }, buildStep: s => buildStep(L.t, L.d, s), matches, parseCode, fill, pickOld: (t, d, n) => { const r = oldWords(t, d, newWords(t, d), n); touchRecent(r); return r.map(x => `${x.t}:${x.w.en}`); }, choiceSet: (t, en, n) => choiceSet(t, T[t].words.find(w => w.en === en), n).map(x => x.en) }; // 테스트용
   homeScreen();
   // 시작하고 잠시 뒤 새 버전이 있는지 조용히 확인
   setTimeout(() => { if (!/^https?:/.test(location.protocol) || window.__SPEC_INLINE || navigator.onLine === false) return;
