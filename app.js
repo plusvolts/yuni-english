@@ -1,7 +1,7 @@
 /* 윤이 영어 — 앱 로직 (의존성 없음) */
 (() => {
   'use strict';
-  const APP_VERSION = '1.9.0';
+  const APP_VERSION = '1.10.0';
   const C = window.CONTENT;
   const T = C.topics;
   const DAYS = 10;
@@ -401,11 +401,12 @@
   }
 
   /* ================= 수업 만들기 ================= */
-  /* 하루(v1.9.0) = 새 단어 5개(목록 순서대로) + 복습 단어 7개(퀴즈)·5개(말하기, 퀴즈와 다른 단어)
-     퀴즈 15문제 = 새 단어 5 + 복습 7 + 새 단어 3개는 다른 방식으로 한 번 더 / 말하기 10 = 새 5 + 복습 5
+  /* 하루(v1.10.0) = 새 단어 8개(목록 순서대로, 주제마다 80개 = 10일) + 복습 단어 5개(퀴즈)·3개(말하기, 퀴즈와 다른 단어)
+     퀴즈 16문제 = 새 단어 8 + 복습 5 + 새 단어 3개는 다른 방식으로 한 번 더 / 말하기 11 = 새 8 + 복습 3
      대화 5 = 새 질문 2 + 같은 주제 앞 질문 2 + 다른 주제 질문 1 / 복습 단계 5 = 복습할 날 된 단어 + 여러 주제에서 고른 단어
+     (v1.9.0: 새 5·복습 7·말하기 복습 5 → v1.10.0: 새 단어를 늘리고 복습은 조금 줄여 하루 약 45개)
      같은 단어만 반복되지 않게: 최근에 복습한 단어(S.recent)는 뒤로 미루고, 약한 단어는 한 번에 2개까지만 */
-  const NEW_PER_DAY = 5, OLD_PER_DAY = 7, SPEAK_OLD = 5, Q_PER_DAY = 2, REVIEW_N = 5, WEAK_MAX = 2, NEW_TWICE = 3, Q_SAME_OLD = 2;
+  const NEW_PER_DAY = 8, OLD_PER_DAY = 5, SPEAK_OLD = 3, Q_PER_DAY = 2, REVIEW_N = 5, WEAK_MAX = 2, NEW_TWICE = 3, Q_SAME_OLD = 2;
   // 약한 단어가 먼저 (틀린 적 많음·아직 안 봄 → 높은 점수, "알아요" → 낮은 점수)
   const weakScore = (t, w) => { const r = S.srs[wkey(t, w)]; return r ? (r.mastered ? -5 : 0) + r.wrong * 2 - r.streak - (r.seen > 3 ? 1 : 0) : 1; };
   // 최근에 복습으로 나온 날 → 0(오늘·어제) ~ 4(한참 전·처음)
@@ -490,7 +491,7 @@
       return shuffle(items).map((x, i) => ({ type: i % 2 ? 'pick-ko' : 'pick-pic', t: x.t, w: x.w, review: true }));
     }
     if (id === 'new') {
-      // 새 단어 소개 5 → 퀴즈 15 (새 단어 5 + 복습 7 + 새 단어 3개는 다른 방식으로 한 번 더) (v1.9.0)
+      // 새 단어 소개 8 → 퀴즈 16 (새 단어 8 + 복습 5 + 새 단어 3개는 다른 방식으로 한 번 더) (v1.10.0)
       const intros = L.words.map(w => ({ type: 'intro', t, w }));
       let quiz = [];
       for (let k = 0; k < 40 && (!quiz.length || !noAdj(quiz)); k++) {
@@ -502,7 +503,7 @@
       return intros.concat(quiz.map(x => ({ type: x.type, t: x.t, w: x.w, old: x.old })));
     }
     if (id === 'speak') {
-      // 새 단어 5개 + 퀴즈와 다른 복습 단어 5개(v1.9.0). 처음 두 개는 따라 말하기
+      // 새 단어 8개 + 퀴즈와 다른 복습 단어 3개(v1.10.0). 처음 두 개는 따라 말하기
       const items = shuffle(L.words.map(w => ({ t, w }))).concat(L.old2.map(x => ({ t: x.t, w: x.w, old: true })));
       const ordered = items.slice(0, 2).concat(shuffle(items.slice(2)));
       return ordered.map((x, i) => ({ type: i < 2 ? 'repeat' : 'say-en', t: x.t, w: x.w, old: x.old, friend: i >= 2 && Math.random() < 0.5 ? pick(['hyun', 'chorok']) : null }));

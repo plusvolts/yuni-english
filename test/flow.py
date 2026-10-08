@@ -28,7 +28,7 @@ async def run(name, vw, vh, mobile):
         errs=[]; pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('console', lambda m: m.type=='error' and errs.append(m.text))
         KOREQ=[]; pg.on('request', lambda r: '/audio-ko/' in r.url and r.url.endswith('.mp3') and KOREQ.append(r.url))  # 공통 65: 한국어 녹음 요청
         await pg.goto(URL); await pg.wait_for_timeout(500)
-        REQ['REQ-24 주제마다 단어 50·질문 20'] = await pg.evaluate("CONTENT.topics.length===28 && CONTENT.topics.every(t=>t.words.length===50 && t.questions.length===20 && t.words.every(w=>w.d))")
+        REQ['REQ-24 주제마다 단어 80·질문 20'] = await pg.evaluate("CONTENT.topics.length===28 && CONTENT.topics.every(t=>t.words.length===80 && t.questions.length===20 && t.words.every(w=>w.d))")
         # v1.8.0 REQ-26: 1학년 12 · 2학년 8 · 3학년 8 주제, 2·3학년 단어는 다른 주제 단어와 겹치지 않음
         g26 = await pg.evaluate("(()=>{const T=CONTENT.topics; const c=g=>T.filter(t=>(t.grade||1)===g).length; const all=T.flatMap(t=>t.words.map(w=>w.en.toLowerCase())); const up=T.filter(t=>(t.grade||1)>1).flatMap(t=>t.words.map(w=>w.en.toLowerCase())); return {g1:c(1),g2:c(2),g3:c(3), order:T.map(t=>t.grade||1).join(''), dup:up.filter(e=>all.indexOf(e)!==all.lastIndexOf(e)).length}})()")
         print(' grades', g26)
@@ -166,21 +166,22 @@ async def run(name, vw, vh, mobile):
         await pg.click('[data-act=topic][data-arg="3"]'); await pg.click('[data-act=day][data-arg="4"]'); await pg.wait_for_timeout(200); await pg.screenshot(path=f'../shots/{name}-6b-steps.png')
         await pg.click('[data-act=step][data-arg="2"]'); await pg.wait_for_timeout(600); await pg.screenshot(path=f'../shots/{name}-6c-jump.png')
         a = await pg.evaluate("YUNI.act && YUNI.act.type"); print(' jumped to', a, await pg.evaluate("JSON.stringify(YUNI.state.pos)"))
-        # v1.9.0: 곤충 4일차 = 새 단어 16~20번 + 복습 7개(곤충 1~15번 4개 이상 + 다른 주제), 말하기 복습 5개는 퀴즈와 다른 단어, 새 질문 7·8번 + 앞 질문 2(서로 다름) + 다른 주제 질문 1
+        # v1.10.0: 곤충 4일차 = 새 단어 25~32번(하루 8개) + 복습 5개(곤충 1~24번 3개 이상 + 다른 주제), 말하기 복습 3개는 퀴즈와 다른 단어, 새 질문 7·8번 + 앞 질문 2 + 다른 주제 질문 1
         mix = await pg.evaluate("""(()=>{ const L=YUNI.lesson, T=CONTENT.topics[3];
-          const nw=L.words.map(w=>w.en), exp=T.words.slice(15,20).map(w=>w.en), prev=T.words.slice(0,15).map(w=>w.en);
+          const nw=L.words.map(w=>w.en), exp=T.words.slice(24,32).map(w=>w.en), prev=T.words.slice(0,24).map(w=>w.en);
           const quiz=YUNI.buildStep(2).filter(a=>a.type!=='intro'), speak=YUNI.buildStep(3), talk=YUNI.buildStep(4);
           const again=YUNI.buildStep(2);
           const k=x=>x.t+':'+x.w.en, o1=L.old.map(k), o2=L.old2.map(k), same=L.old.filter(x=>x.t===3);
-          return { nw, exp, old:o1, old2:o2, oldOk:L.old.length===7 && same.length>=4 && same.every(x=>prev.includes(x.w.en))
-              && L.old2.length===5 && o2.every(x=>!o1.includes(x)) && new Set(o1).size===7 && new Set(o2).size===5,
+          return { nw, exp, old:o1, old2:o2, oldOk:L.old.length===5 && same.length>=3 && same.every(x=>prev.includes(x.w.en))
+              && L.old2.length===3 && o2.every(x=>!o1.includes(x)) && new Set(o1).size===5 && new Set(o2).size===3,
             quiz:quiz.length, quizOld:quiz.filter(a=>a.old).length, quizNew:quiz.filter(a=>!a.old).length, speak:speak.length, speakOld:speak.filter(a=>a.old).length,
             twice: nw.every(e=>quiz.some(a=>!a.old&&a.w.en===e)) && quiz.filter(a=>!a.old).filter((a,i,arr)=>arr.findIndex(b=>b.w.en===a.w.en)!==i).length===3,
             talk:talk.map(a=>a.q.q), talkNew: talk.length===5 && talk[0].q===T.questions[6] && talk[1].q===T.questions[7] && T.questions.slice(0,6).includes(talk[2].q) && T.questions.slice(0,6).includes(talk[3].q) && talk[2].q!==talk[3].q && talk[4].t!==3,
             same: again===YUNI.buildStep(2) }; })()""")
         print(' mix', json.dumps(mix, ensure_ascii=False))
         REQ['REQ-25 새 단어·질문과 복습 섞기'] = mix['nw']==mix['exp'] and mix['oldOk'] and mix['talkNew'] and mix['same']
-        REQ['REQ-27 하루 분량 (퀴즈 15·말하기 10·대화 5)'] = mix['quiz']==15 and mix['quizOld']==7 and mix['quizNew']==8 and mix['twice'] and mix['speak']==10 and mix['speakOld']==5
+        REQ['REQ-29 하루 새 단어 8개(주제당 80개)'] = len(mix['nw'])==8 and mix['nw']==mix['exp']
+        REQ['REQ-27 하루 분량 (새 단어 8·퀴즈 16·말하기 11·대화 5)'] = len(mix['nw'])==8 and mix['quiz']==16 and mix['quizOld']==5 and mix['quizNew']==11 and mix['twice'] and mix['speak']==11 and mix['speakOld']==3
         # v1.9.0: 1일차·첫 주제처럼 복습 풀이 모자라도 오류 없이 있는 만큼만 (1주제 1일차: 앞 질문 0 → 새 2 + 다른 주제 1 이하)
         d1 = await pg.evaluate("(()=>{ const q=YUNI.dayQuestions(0,1); return {n:q.length, uniq:new Set(q.map(x=>x.t+':'+x.q.q)).size, q2:YUNI.dayQuestions(0,2).length}; })()")
         print(' day1 talk', d1)
