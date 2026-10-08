@@ -1,5 +1,5 @@
 /* 오프라인 캐시. content.js 등을 고치면 VERSION 숫자를 올려주세요. */
-const VERSION = 'yuni-english-15';
+const VERSION = 'yuni-english-16';
 const FILES = ['./', 'index.html', 'style.css', 'content.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'audio/index.json', 'audio-ko/index.json', '기획서.md'];
 // 원어민 녹음·한국어 녹음 파일은 설치 뒤 백그라운드로 모두 받아둬요 (오프라인용)
 const cacheDir = dir => caches.open(VERSION).then(c => fetch(dir + '/index.json').then(r => r.json()).then(async idx => { const fs = [...new Set(Object.values(idx))]; for (let i = 0; i < fs.length; i += 8) await Promise.all(fs.slice(i, i + 8).map(f => c.match(dir + '/' + f).then(hit => hit || c.add(dir + '/' + f).catch(() => {})))); })).catch(() => {}); // 8개씩 차례로 (한꺼번에 받으면 폰에서 실패)

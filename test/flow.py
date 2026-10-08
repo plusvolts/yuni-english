@@ -62,6 +62,10 @@ async def run(name, vw, vh, mobile):
             if await pg.locator('.choice.right').count() or await pg.locator('.mic.on').count(): continue
             if t not in seen:
                 seen.add(t); await pg.wait_for_timeout(200); await pg.screenshot(path=f'../shots/{name}-2-{t}.png')
+                if t in ('pick-ko','pick-pic'):  # v1.9.0: 보기 4개, 보기가 화면 밖으로 넘치지 않음(가로 스크롤 없음·마지막 보기가 보임)
+                    c4 = await pg.evaluate("(()=>{const c=[...document.querySelectorAll('.choice')]; const r=c[c.length-1].getBoundingClientRect(); return {n:c.length, fit:r.bottom<=innerHeight+1 && r.right<=innerWidth+1, nox:document.documentElement.scrollWidth<=innerWidth}})()")
+                    print(' choices', t, c4)
+                    REQ[f'REQ-27 {t} 보기 4개·화면 안'] = c4['n']==4 and c4['fit'] and c4['nox']
             if t=='greet':
                 if await pg.locator('[data-mic]').count():
                     await pg.evaluate("window.__reply='I am happy'"); await pg.dispatch_event('[data-mic]','pointerdown')
@@ -162,30 +166,34 @@ async def run(name, vw, vh, mobile):
         await pg.click('[data-act=topic][data-arg="3"]'); await pg.click('[data-act=day][data-arg="4"]'); await pg.wait_for_timeout(200); await pg.screenshot(path=f'../shots/{name}-6b-steps.png')
         await pg.click('[data-act=step][data-arg="2"]'); await pg.wait_for_timeout(600); await pg.screenshot(path=f'../shots/{name}-6c-jump.png')
         a = await pg.evaluate("YUNI.act && YUNI.act.type"); print(' jumped to', a, await pg.evaluate("JSON.stringify(YUNI.state.pos)"))
-        # v1.8.0: 곤충 4일차 = 새 단어 16~20번 + 복습 5개(곤충 1~15번 3개 이상 + 다른 주제), 말하기 복습 3개는 퀴즈와 다른 단어, 새 질문 7·8번 + 앞 질문 1 + 다른 주제 질문 1
+        # v1.9.0: 곤충 4일차 = 새 단어 16~20번 + 복습 7개(곤충 1~15번 4개 이상 + 다른 주제), 말하기 복습 5개는 퀴즈와 다른 단어, 새 질문 7·8번 + 앞 질문 2(서로 다름) + 다른 주제 질문 1
         mix = await pg.evaluate("""(()=>{ const L=YUNI.lesson, T=CONTENT.topics[3];
           const nw=L.words.map(w=>w.en), exp=T.words.slice(15,20).map(w=>w.en), prev=T.words.slice(0,15).map(w=>w.en);
           const quiz=YUNI.buildStep(2).filter(a=>a.type!=='intro'), speak=YUNI.buildStep(3), talk=YUNI.buildStep(4);
           const again=YUNI.buildStep(2);
           const k=x=>x.t+':'+x.w.en, o1=L.old.map(k), o2=L.old2.map(k), same=L.old.filter(x=>x.t===3);
-          return { nw, exp, old:o1, old2:o2, oldOk:L.old.length===5 && same.length>=3 && same.every(x=>prev.includes(x.w.en))
-              && L.old2.length===3 && o2.every(x=>!o1.includes(x)) && new Set(o1).size===5,
+          return { nw, exp, old:o1, old2:o2, oldOk:L.old.length===7 && same.length>=4 && same.every(x=>prev.includes(x.w.en))
+              && L.old2.length===5 && o2.every(x=>!o1.includes(x)) && new Set(o1).size===7 && new Set(o2).size===5,
             quiz:quiz.length, quizOld:quiz.filter(a=>a.old).length, quizNew:quiz.filter(a=>!a.old).length, speak:speak.length, speakOld:speak.filter(a=>a.old).length,
-            twice: nw.every(e=>quiz.some(a=>!a.old&&a.w.en===e)) && quiz.filter(a=>!a.old).some((a,i,arr)=>arr.findIndex(b=>b.w.en===a.w.en)!==i),
-            talk:talk.map(a=>a.q.q), talkNew: talk.length===4 && talk[0].q===T.questions[6] && talk[1].q===T.questions[7] && T.questions.slice(0,6).includes(talk[2].q) && talk[3].t!==3,
+            twice: nw.every(e=>quiz.some(a=>!a.old&&a.w.en===e)) && quiz.filter(a=>!a.old).filter((a,i,arr)=>arr.findIndex(b=>b.w.en===a.w.en)!==i).length===3,
+            talk:talk.map(a=>a.q.q), talkNew: talk.length===5 && talk[0].q===T.questions[6] && talk[1].q===T.questions[7] && T.questions.slice(0,6).includes(talk[2].q) && T.questions.slice(0,6).includes(talk[3].q) && talk[2].q!==talk[3].q && talk[4].t!==3,
             same: again===YUNI.buildStep(2) }; })()""")
         print(' mix', json.dumps(mix, ensure_ascii=False))
         REQ['REQ-25 새 단어·질문과 복습 섞기'] = mix['nw']==mix['exp'] and mix['oldOk'] and mix['talkNew'] and mix['same']
-        REQ['REQ-27 문항 1.5배 (퀴즈 12·말하기 8·대화 4)'] = mix['quiz']==12 and mix['quizOld']==5 and mix['quizNew']==7 and mix['twice'] and mix['speak']==8 and mix['speakOld']==3
+        REQ['REQ-27 하루 분량 (퀴즈 15·말하기 10·대화 5)'] = mix['quiz']==15 and mix['quizOld']==7 and mix['quizNew']==8 and mix['twice'] and mix['speak']==10 and mix['speakOld']==5
+        # v1.9.0: 1일차·첫 주제처럼 복습 풀이 모자라도 오류 없이 있는 만큼만 (1주제 1일차: 앞 질문 0 → 새 2 + 다른 주제 1 이하)
+        d1 = await pg.evaluate("(()=>{ const q=YUNI.dayQuestions(0,1); return {n:q.length, uniq:new Set(q.map(x=>x.t+':'+x.q.q)).size, q2:YUNI.dayQuestions(0,2).length}; })()")
+        print(' day1 talk', d1)
+        REQ['REQ-27 앞 질문 없는 1일차도 오류 없음'] = 2 <= d1['n'] <= 3 and d1['uniq']==d1['n'] and 2 <= d1['q2'] <= 5
         # v1.8.0 REQ-28: 같은 단어만 반복되지 않게 — 약한 단어가 많아도 세 번 연속 복습 15개가 모두 다른 단어, 보기에 다른 주제 단어도 나옴
         div = await pg.evaluate("""(()=>{ const S=YUNI.state, bk=JSON.stringify({srs:S.srs, recent:S.recent});
           S.srs={}; S.recent={}; CONTENT.topics[0].words.forEach(w=>{ S.srs['0:'+w.en]={streak:0,due:null,wrong:3,seen:5,learned:'2026-01-01',mastered:false}; });
-          const picks=[YUNI.pickOld(0,7,5), YUNI.pickOld(0,7,5), YUNI.pickOld(0,7,5)].flat();
+          const picks=[YUNI.pickOld(0,8,7), YUNI.pickOld(0,8,7), YUNI.pickOld(0,8,7)].flat();
           Object.assign(S, JSON.parse(bk));
           let other=0; for(let i=0;i<20;i++){ const c=YUNI.choiceSet(14, CONTENT.topics[14].words[i].en, 4); other+=c.filter(e=>!CONTENT.topics[14].words.some(w=>w.en===e)).length; }
           return { picks:picks.length, distinct:new Set(picks).size, other }; })()""")
         print(' diversity', div)
-        REQ['REQ-28 복습 단어 골고루 (세 번 연속 겹침 없음, 보기 다양)'] = div['picks']==15 and div['distinct']==15 and div['other']>=10
+        REQ['REQ-28 복습 단어 골고루 (세 번 연속 겹침 없음, 보기 다양)'] = div['picks']==21 and div['distinct']==21 and div['other']>=10
         await pg.click('[data-act=quit]'); await pg.click('[data-act=parent]'); await pg.wait_for_timeout(200)
         # v1.6.0 공통 61: 아빠 화면 암호 (기본 1234)
         await pg.screenshot(path=f'../shots/{name}-7a-gate.png')
