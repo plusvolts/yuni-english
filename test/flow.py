@@ -318,6 +318,37 @@ async def run(name, vw, vh, mobile):
         miss = await pg.evaluate("""fetch('audio/index.json').then(r=>r.json()).then(idx=>{ const m=[]; for(const t of CONTENT.topics){ for(const w of t.words){ if(!idx[w.en]) m.push(w.en); if(!idx['slow|'+w.en]) m.push('slow|'+w.en);} for(const q of t.questions){ if(!idx[q.q]) m.push(q.q); const a=YUNI.fill(q.answer); if(!idx[a]) m.push(a);} } return m; })""")
         print(' 녹음 없는 문장:', miss[:8], len(miss))
         REQ['REQ-12 전체 단어·질문 녹음'] = len(miss) == 0
+        # v1.11.0 REQ-06: 가족(엄마·아빠·이모·이모부·삼촌)이 등장, 은후·초록·현 없음
+        fam = await pg.evaluate("Object.values(CONTENT.family).map(f=>f.name).join(',')")
+        REQ['REQ-06 가족 등장 (엄마·아빠·이모·이모부·삼촌)'] = fam == '엄마,아빠,이모,이모부,삼촌' and not any(n in src for n in ['eunhoo', 'chorok', "'hyun'"]) and await pg.evaluate("!CONTENT.friends && !JSON.stringify(CONTENT.topics).match(/은후|Eunhoo|Chorok|Hyun\b/)")
+        # v1.11.0 REQ-30: 파닉스 — 글자 수업(1)과 소리 합치기 수업(5)을 끝까지, 별·진도 저장, 글자 소리·단어 녹음
+        ph_ok = []; ph_miss = await pg.evaluate("fetch('audio/index.json').then(r=>r.json()).then(idx=>{ const m=[]; const P=CONTENT.phonics; for(const l of P.letters){ if(!idx[l.l.toUpperCase()]) m.push(l.l.toUpperCase()); if(!idx['ph|'+l.ph]) m.push('ph|'+l.ph); if(!idx[l.word]) m.push(l.word);} for(const f of P.families) for(const w of f.words){ if(!idx[w.en]) m.push(w.en); if(!idx['slow|'+w.en]) m.push('slow|'+w.en);} return m; })")
+        for lesson in (0, 4):
+            s0 = await stars(); await pg.evaluate(f"YUNI.startPhon({lesson})"); await pg.wait_for_timeout(300); fin = False; types = set()
+            for step in range(120):
+                await pg.wait_for_timeout(120)
+                if await pg.evaluate("!!document.querySelector('.reward .big-stars')"): fin = True; await pg.screenshot(path=f'../shots/{name}-10-phon{lesson}-end.png'); break
+                a = await pg.evaluate("(()=>{const a=YUNI.act; return a?{type:a.type, l:a.lt&&a.lt.l, en:a.w&&a.w.en}:null})()")
+                if not a: continue
+                t = a['type']; k = await cur(); types.add(t)
+                if t not in ('ph-letter', 'ph-blend') and t not in [x for x in types if x != t] and shots < 99: await pg.wait_for_timeout(200); await pg.screenshot(path=f'../shots/{name}-10-phon{lesson}-{t}.png')
+                if t in ('ph-letter', 'ph-blend'):
+                    if t == 'ph-blend': await pg.click('[data-act=blend]'); await pg.wait_for_timeout(150)
+                    await pg.click('[data-act=next]')
+                elif t == 'ph-pickl':
+                    if step % 3 == 0: await pg.locator(f'.choice[data-act=pick]:not([data-arg="{a["l"]}"])').first.click(); await pg.wait_for_timeout(80)
+                    await pg.click(f'.choice[data-act=pick][data-arg="{a["l"]}"]')
+                elif t == 'ph-pickw': await pg.click(f'.choice[data-act=pick][data-arg="{a["en"]}"]')
+                elif t in ('repeat', 'say-en'):
+                    if not await pg.locator('[data-mic]').count(): continue
+                    await say(a['en'])
+                try: await moved_from(k, 8000)
+                except Exception: print(' phonics stuck at', a); break
+            ph_ok.append(fin and await stars() > s0 and await pg.evaluate(f"!!YUNI.state.phon.done[{lesson}]"))
+            print(f' phonics lesson {lesson+1}:', 'finished' if fin else 'NOT finished', sorted(types), 'stars', s0, '→', await stars())
+        REQ['REQ-30 파닉스 수업 (글자 소리·소리 합치기) 끝까지·별·진도'] = all(ph_ok) and await pg.evaluate("YUNI.state.phon.i >= 1 && CONTENT.phonics.lessons.length === 11 && CONTENT.phonics.letters.length === 26")
+        print(' 파닉스 녹음 없는 것:', ph_miss[:8], len(ph_miss))
+        REQ['REQ-30 파닉스 녹음 (글자 이름·소리·단어)'] = len(ph_miss) == 0
         REQ['화면 오류 없음'] = not errs
         print(' ---- 요구사항 점검 ----')
         for k, v in REQ.items(): print('  ', 'OK  ' if v else 'FAIL', k)

@@ -3,7 +3,7 @@
 global.window = {}; require('../content.js'); const C = window.CONTENT;
 const keys = new Set(); const add = (t, slow) => { t = String(t).trim(); if (!t) return; keys.add(t); if (slow) keys.add('slow|' + t); };
 const fills = [];
-for (const age of ['six', 'seven', 'eight']) for (const rel of ['brother', 'sister']) fills.push(s => s.replace(/\{NAME\}/g, 'Yuni').replace('{AGE}', age).replace('{HYUN_REL}', rel));
+for (const age of ['six', 'seven', 'eight']) fills.push(s => s.replace(/\{NAME\}/g, 'Yuni').replace('{AGE}', age));
 for (const t of C.topics) {
   for (const w of t.words) add(w.en, true);
   for (const q of t.questions) {
@@ -18,4 +18,8 @@ const L = C.lines; const f0 = fills[0];
 add(f0(L.hi)); add(f0(L.greet), true); add(f0(L.greetOk)); add("I'm happy!");
 Object.values(L.feelings).forEach(p => p.forEach(x => add(x)));
 L.praise.forEach(x => add(f0(x)));
+// 파닉스 (v1.11.0): 글자 이름 'A'~'Z', 글자 소리 'ph|발음기호'(make_audio.py가 발음기호 그대로 녹음), 보기 단어, 소리 합치기 단어(천천히 포함)
+const P = C.phonics || { letters: [], families: [] };
+for (const lt of P.letters) { add(lt.l.toUpperCase()); keys.add('ph|' + lt.ph); add(lt.word, true); }
+for (const f of P.families) for (const w of f.words) add(w.en, true);
 process.stdout.write(JSON.stringify([...keys], null, 0));

@@ -1,7 +1,7 @@
 /* 윤이 영어 — 앱 로직 (의존성 없음) */
 (() => {
   'use strict';
-  const APP_VERSION = '1.10.0';
+  const APP_VERSION = '1.11.0';
   const C = window.CONTENT;
   const T = C.topics;
   const DAYS = 10;
@@ -22,12 +22,13 @@
       settings: { parentPin: '1234', robotName: '로보', childName: 'Yuni', age: 'seven', hyunRel: 'brother', dailyLimit: 20, voice: 'native', koVoice: '', koVoiceMode: 'rec', koRate: 0.9, goalStars: 50, goalText: '아빠와 약속한 선물' },
       pos: { t: 0, d: 1, s: 0 }, done: {}, stars: 0, goalBase: 0,
       srs: {}, recent: {}, days: [], log: {}, stickers: {}, override: '', rewards: [],
+      phon: { i: 0, done: {} }, // 파닉스 진도 (v1.11.0): i = 다음 수업 번호, done[번호] = 끝낸 날
     };
   }
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { const d = defaults(); const o = JSON.parse(raw); return Object.assign(d, o, { settings: Object.assign(d.settings, o.settings || {}) }); }
+      if (raw) { const d = defaults(); const o = JSON.parse(raw); return Object.assign(d, o, { settings: Object.assign(d.settings, o.settings || {}), phon: Object.assign(d.phon, o.phon || {}) }); }
     } catch (e) { /* 저장소 사용 불가 */ }
     return defaults();
   }
@@ -58,7 +59,11 @@
   // 이모지가 여러 개(예: 🐜🐞)면 칸에 들어가게 조금 작게
   const emojiCount = t => { try { return [...new Intl.Segmenter().segment(t)].length; } catch (e) { return 1; } };
   const picHtml = w => w.photo ? `<img src="${esc(w.photo)}" alt="${esc(w.en)}">` : emojiCount(w.img) > 1 ? `<span class="multi">${esc(w.img)}</span>` : esc(w.img);
-  const friendHtml = (id, lg) => { const f = C.friends[id]; return `<div class="friend${lg ? ' lg' : ''}" style="background:${f.color}">${esc(f.name)}</div>`; };
+  // 가족 캐릭터 (v1.11.0: 엄마·아빠·이모·이모부·삼촌). photo가 있으면 사진, 없으면 색 동그라미에 이름
+  const FAM = C.family || {};
+  const famIds = () => Object.keys(FAM);
+  const famPick = () => pick(famIds());
+  const friendHtml = (id, lg) => { const f = FAM[id] || { name: id, color: '#999' }; return `<div class="friend${lg ? ' lg' : ''}${f.name.length > 2 ? ' n3' : ''}" style="background:${f.color}">${f.photo ? `<img src="${esc(f.photo)}" alt="${esc(f.name)}">` : esc(f.name)}</div>`; };
   const robotName = () => S.settings.robotName || '로보';
 
   /* ================= 소리 ================= */
@@ -292,10 +297,11 @@
       <div class="home-main">
         <div class="bubble">안녕, ${esc(S.settings.childName)}!<small>나는 ${esc(robotName())}야. 오늘도 영어 놀이 하자!</small></div>
         <div class="robot" data-act="hello">🤖</div>
-        <div class="friends">${Object.keys(C.friends).map(id => friendHtml(id)).join('')}</div>
+        <div class="friends">${famIds().map(id => friendHtml(id)).join('')}</div>
         <button class="btn primary go-btn" data-act="go">오늘 영어<small>${esc(posLabel())}</small></button>
         <div class="home-links">
           <button class="btn" data-act="picker">🧭 단계 고르기</button>
+          <button class="btn" data-act="phon">🔤 파닉스<small>${esc(phonLabel())}</small></button>
           <button class="btn" data-act="stickers">📒 스티커북</button>
         </div>
         <button class="goal card" data-act="rewards" style="text-align:left"><div class="row"><b>🎁 ${esc(S.settings.goalText)}</b><div class="spacer"></div><span class="muted">${g >= goal ? '달성! 🎉' : `${g} / ${goal}`}</span></div>
@@ -305,6 +311,7 @@
     </div>`, {
       go: () => startLesson(S.pos.t, S.pos.d, S.pos.s),
       picker: () => pickerScreen('topics'),
+      phon: phonScreen,
       stickers: stickerScreen,
       rewards: rewardScreen,
       parent: () => gateScreen(parentScreen),
@@ -506,7 +513,7 @@
       // 새 단어 8개 + 퀴즈와 다른 복습 단어 3개(v1.10.0). 처음 두 개는 따라 말하기
       const items = shuffle(L.words.map(w => ({ t, w }))).concat(L.old2.map(x => ({ t: x.t, w: x.w, old: true })));
       const ordered = items.slice(0, 2).concat(shuffle(items.slice(2)));
-      return ordered.map((x, i) => ({ type: i < 2 ? 'repeat' : 'say-en', t: x.t, w: x.w, old: x.old, friend: i >= 2 && Math.random() < 0.5 ? pick(['hyun', 'chorok']) : null }));
+      return ordered.map((x, i) => ({ type: i < 2 ? 'repeat' : 'say-en', t: x.t, w: x.w, old: x.old, friend: i >= 2 && Math.random() < 0.5 ? famPick() : null }));
     }
     // talk: 오늘의 새 질문 2개 + 복습 질문 3개(같은 주제 앞 질문 2 + 다른 주제 1)
     return dayQuestions(t, d).map(x => ({ type: 'talk', t: x.t, q: x.q }));
@@ -536,6 +543,7 @@
     L.i++;
     if (L.i < L.acts.length) return showAct();
     // 단계 끝
+    if (L.phon != null) return finishPhon();
     L.s++; S.pos.s = L.s; save();
     if (L.s >= STEPS.length) return finishDay();
     const lr = lockReason(); if (lr) return lockedScreen(lr);
@@ -573,6 +581,16 @@
 
   function lessonFrame(inner, opts = {}) {
     const total = L.acts.length; const p = Math.round(L.i / total * 100);
+    if (L.phon != null) return `<div class="screen">
+      <div class="topbar">
+        <button class="icon-btn" data-act="quit" aria-label="파닉스 목록으로">🏠</button>
+        <button class="icon-btn" data-act="prev" aria-label="이전 문제"${L.i === 0 ? ' disabled style="opacity:.35"' : ''}>◀</button>
+        <div class="train"><div class="car now" style="--p:${p}%;max-width:300px"><i></i></div></div>
+        <div class="stars">⭐ ${S.stars}</div>
+      </div>
+      <div class="step-name">🔤 파닉스 ${L.phon + 1}. ${esc(PH.lessons[L.phon].title)} · ${L.i + 1} / ${total}</div>
+      <div class="stage${opts.split ? ' split' : ''}">${inner}</div>
+    </div>`;
     return `<div class="screen">
       <div class="topbar">
         <button class="icon-btn" data-act="quit" aria-label="처음으로">🏠</button>
@@ -584,7 +602,7 @@
       <div class="stage${opts.split ? ' split' : ''}">${inner}</div>
     </div>`;
   }
-  const baseHandlers = () => ({ quit: homeScreen, prev: prevAct });
+  const baseHandlers = () => ({ quit: () => (L && L.phon != null ? phonScreen() : homeScreen()), prev: prevAct });
   // 이전 문제로 (단계 첫 문제면 앞 단계의 마지막 문제로)
   function prevAct() {
     hush();
@@ -601,7 +619,8 @@
 
   function showAct() {
     const a = L.acts[L.i];
-    ({ greet: actGreet, msg: actMsg, intro: actIntro, 'pick-pic': actPickPic, 'pick-ko': actPickKo, repeat: actRepeat, 'say-en': actSayEn, talk: actTalk })[a.type](a);
+    ({ greet: actGreet, msg: actMsg, intro: actIntro, 'pick-pic': actPickPic, 'pick-ko': actPickKo, repeat: actRepeat, 'say-en': actSayEn, talk: actTalk,
+      'ph-letter': actPhLetter, 'ph-pickl': actPhPickLetter, 'ph-blend': actPhBlend, 'ph-pickw': actPhPickWord })[a.type](a);
   }
 
   function actMsg(a) {
@@ -691,7 +710,7 @@
   }
   function actPickPic(a) {
     const w = a.w; const att = { n: 0 };
-    const friend = !a.review && Math.random() < 0.25 ? 'eunhoo' : null;
+    const friend = !a.review && Math.random() < 0.25 ? famPick() : null;
     render('lesson', lessonFrame(`<div class="prompt">
         ${friend ? `<div class="say">${friendHtml(friend)}<span class="text">같이 찾아보자!</span></div>` : ''}
         <div class="bubble">${a.review || a.old ? '🔁 기억나요?' : '잘 듣고 그림을 골라요'}</div>
@@ -759,7 +778,7 @@
     let fails = 0; let closed = false; let marked = false;
     const reveal = async () => {
       const tok = actToken;
-      if (!marked && a.w) { marked = true; mark(a.t, a.w, false, false); }
+      if (!marked && a.w && a.t != null) { marked = true; mark(a.t, a.w, false, false); }
       setHint(`정답은 “${cfg.answer}” · 정답을 따라 말하면 별을 받아요`);
       const area = document.querySelector('.mic-area');
       if (area && !area.querySelector('[data-act=skipnext]')) area.insertAdjacentHTML('beforeend', '<div class="next-row reveal-next"><button class="btn primary" data-act="skipnext">다음 ▶</button></div>');
@@ -771,7 +790,7 @@
       if (closed) return;
       if (ok) {
         closed = true; ding(); const n = award(true); flash(n ? '⭐' : '👍');
-        if (a.w && !marked) mark(a.t, a.w, fails === 0, false);
+        if (a.w && a.t != null && !marked) mark(a.t, a.w, fails === 0, false);
         await cfg.success(); await sleep(300); if (my === actToken) nextAct();
         return;
       }
@@ -803,8 +822,8 @@
   }
 
   function actSayEn(a) {
-    const w = a.w; const f = a.friend && C.friends[a.friend];
-    const ask = f ? `${f.name}한테 알려줄래? '${w.ko}'는 영어로 뭐야?` : `'${w.ko}'는 영어로 뭐야?`;
+    const w = a.w; const f = a.friend && FAM[a.friend];
+    const ask = f ? `${f.name}한테 알려줄래? '${w.ko}'는 영어로 뭐야?` : `'${w.ko}'는 영어로 뭐야?`; // 가족한테 가르쳐주기 (v1.11.0)
     const masked = w.en.split(' ').map(p => p[0] + ' _'.repeat(p.length - 1)).join('   ');
     const onRes = speakAct(a, {
       answer: w.en,
@@ -821,7 +840,7 @@
 
   function actTalk(a) {
     const q = a.q; const answer = fill(q.answer);
-    const asker = q.friend ? null : (Math.random() < 0.5 ? 'eunhoo' : null);
+    const asker = q.friend ? null : (Math.random() < 0.5 ? famPick() : null);
     const words = answer.split(' '); const half = words.slice(0, Math.max(1, Math.ceil(words.length / 2))).join(' ') + ' …';
     const onRes = speakAct(a, {
       answer,
@@ -829,7 +848,7 @@
       hint1: async () => { setHint(`힌트: ${half}`); await ko('이렇게 시작해 봐'); await en(half.replace(' …', '')); },
       hint2: async () => { setHint(`${answer} — 따라 말해요`); await en(answer); },
     });
-    const who = q.friend ? friendHtml(q.friend, true) : asker ? friendHtml(asker, true) : '<span class="who">🤖</span>';
+    const who = q.friend && FAM[q.friend] ? friendHtml(q.friend, true) : asker ? friendHtml(asker, true) : '<span class="who">🤖</span>';
     render('lesson', lessonFrame(`<div class="prompt">
         <div class="say">${who}<span class="text">${esc(q.q)}</span></div>
         ${q.img ? `<div class="pic">${esc(q.img)}</div>` : ''}
@@ -841,12 +860,201 @@
     });
     const my = actToken;
     (async () => {
-      if (!L.heardKo.talk) { L.heardKo.talk = 1; await ko('친구가 물어봐요. 영어로 대답해요!'); }
+      if (!L.heardKo.talk) { L.heardKo.talk = 1; await ko('가족이 물어봐요. 영어로 대답해요!'); }
       if (my !== actToken) return; await en(q.q);
       if (my !== actToken) return;
       clearTimeout(talkTimer);
       talkTimer = setTimeout(async () => { if (my === actToken && !micBusy && !document.getElementById('hint').textContent) { setHint(`힌트: ${half}`); await en(half.replace(' …', '')); } }, 6000);
     })();
+  }
+
+
+  /* ================= 파닉스 (v1.11.0, REQ-30) =================
+     수업 11개: 글자 소리 4개(a~g, h~n, o~t, u~z) + 소리 합치기 7개(-at -an / -ap -ig / -in -it / -og -ot / -op -ug / -un -en / -ed -et)
+     글자 수업 = 글자 소개(이름 → 소리 → 보기 단어) → 소리 듣고 글자 고르기 → 보기 단어 따라 말하기
+     단어 수업 = 소리 합치기(글자 하나씩 소리 → 합쳐서 단어) → 단어 듣고 고르기 → 그림 보고 영어로 말하기
+     별은 오늘 영어와 같은 규칙(문제당 1개, 하루 50개). 진도는 S.phon { i, done }. 시간 제한도 같이 세요 */
+  const PH = C.phonics || { letters: [], families: [], lessons: [] };
+  const phLetter = l => PH.letters.find(x => x.l === l);
+  const phFamily = id => PH.families.find(x => x.id === id);
+  const phonNext = () => Math.min(Number(S.phon.i) || 0, Math.max(0, PH.lessons.length - 1));
+  const phonLabel = () => (PH.lessons.length ? `${phonNext() + 1}. ${PH.lessons[phonNext()].title}` : '');
+  // 글자 소리: 녹음 키 'ph|발음기호' (tools/sentences.js → make_audio.py가 발음기호 그대로 녹음). 녹음이 없으면 보기 단어를 기기 음성으로
+  async function enSound(lt) {
+    const k = 'ph|' + lt.ph;
+    if (S.settings.voice !== 'device' && AUD[k]) { const my = sayToken; if (await playClip(AUD[k].startsWith('data:') ? AUD[k] : 'audio/' + AUD[k])) return; if (my !== sayToken) return; }
+    return speak(lt.word, 'en-US', 0.8);
+  }
+  const enLetterName = lt => en(lt.l.toUpperCase()); // 'A' ~ 'Z' 녹음 (글자 이름)
+  function makePhon(idx) {
+    const ls = PH.lessons[idx]; const acts = [];
+    if (ls.letters) {
+      const lts = [...ls.letters].map(phLetter).filter(Boolean);
+      lts.forEach(lt => acts.push({ type: 'ph-letter', lt }));
+      shuffle(lts).forEach(lt => acts.push({ type: 'ph-pickl', lt, pool: lts }));
+      shuffle(lts).slice(0, 3).forEach(lt => acts.push({ type: 'repeat', w: { en: lt.word, ko: lt.ko, img: lt.img } }));
+    } else {
+      const fams = (ls.families || []).map(phFamily).filter(Boolean);
+      const words = fams.flatMap(f => f.words);
+      fams.forEach(f => f.words.forEach(w => acts.push({ type: 'ph-blend', w, fam: f.id })));
+      shuffle(words).forEach(w => acts.push({ type: 'ph-pickw', w, pool: words }));
+      shuffle(words).slice(0, 4).forEach(w => acts.push({ type: 'say-en', w, friend: Math.random() < 0.5 ? famPick() : null }));
+    }
+    return acts;
+  }
+  function phonScreen() {
+    const n = PH.lessons.length; if (!n) return homeScreen();
+    const next = phonNext(); const doneN = Object.keys(S.phon.done || {}).length;
+    render('phon', `<div class="screen">
+      <div class="topbar"><button class="icon-btn" data-act="home" aria-label="처음으로">🏠</button><h2 class="title">🔤 파닉스 — 글자 소리 배우기</h2><div class="spacer"></div><span class="muted">${doneN} / ${n} 끝냄</span></div>
+      <div class="friends">${famIds().map(id => friendHtml(id)).join('')}</div>
+      <button class="btn primary go-btn" data-act="go" data-arg="${next}">파닉스 ${S.phon.done[next] ? '다시 하기' : '시작'}<small>${next + 1}. ${esc(PH.lessons[next].title)}</small></button>
+      <div class="grid">${PH.lessons.map((ls, i) => `<button class="tile${i === next ? ' now' : ''}" data-act="go" data-arg="${i}">
+        <span class="em">${S.phon.done[i] ? '✅' : ls.icon}</span><b>${i + 1}. ${esc(ls.title)}</b><small>${S.phon.done[i] ? `끝냈어요 (${esc(S.phon.done[i])})` : ls.letters ? `글자 ${ls.letters.length}개` : `단어 ${(ls.families || []).length * 4}개`}</small></button>`).join('')}</div>
+      <p class="muted">글자 소리를 듣고 → 소리를 합쳐서 단어를 읽어요. 별은 오늘 영어와 같이 세요 (하루 최대 ${DAY_STAR_MAX}개).</p>
+    </div>`, { home: homeScreen, go: a => startPhon(+a) });
+    ko('파닉스! 글자 소리를 배워요');
+  }
+  function startPhon(idx) {
+    const lr = lockReason(); if (lr) return lockedScreen(lr);
+    if (!(idx >= 0 && idx < PH.lessons.length)) idx = 0;
+    if (!S.days.includes(today())) S.days.push(today()); save();
+    L = { phon: idx, t: null, d: 0, s: 0, acts: [], i: 0, earned: 0, heardKo: {}, awarded: {}, words: [], old: [], old2: [], built: {} };
+    L.acts = makePhon(idx);
+    showAct();
+  }
+  const letterTile = (lt, act) => `<button class="choice letter" data-act="${act}" data-arg="${lt.l}"><span class="lt">${lt.l}</span><small>${lt.l.toUpperCase()}</small></button>`;
+  // 글자 소개: 큰 글자 → 이름 → 소리 두 번 → 보기 단어. 글자를 누르면 소리, 그림을 누르면 단어
+  function actPhLetter(a) {
+    const lt = a.lt; const idx = L.acts.filter(x => x.type === 'ph-letter').indexOf(a) + 1; const n = L.acts.filter(x => x.type === 'ph-letter').length;
+    render('lesson', lessonFrame(`<div class="prompt">
+        <button class="big-letter" data-act="snd" aria-label="글자 소리 듣기"><span class="lt">${lt.l}</span><span class="up">${lt.l.toUpperCase()}</span></button>
+        <div class="bubble">${lt.l} 는 <b>'${esc(lt.snd)}'</b> 소리<small>이름은 ${esc(lt.name)}</small></div>
+        <div class="listen-row"><button class="listen" data-act="name" aria-label="글자 이름">🔤</button><button class="listen" data-act="snd" aria-label="글자 소리">🔊</button><button class="listen slow" data-act="word" aria-label="단어 듣기">🐢</button></div>
+      </div>
+      <div class="prompt">
+        <button class="ph-word" data-act="word"><div class="pic">${picHtml(lt)}</div><div class="word"><b>${lt.l}</b>${esc(lt.word.slice(1))}</div><div class="ko">${esc(lt.ko)}</div></button>
+        <div class="next-row"><span class="muted">글자 ${idx} / ${n}</span><button class="btn primary" data-act="next">다음 ▶</button></div>
+      </div>`, { split: true }), {
+      ...baseHandlers(), next: nextAct,
+      name: () => { hush(); enLetterName(lt); },
+      snd: () => { hush(); enSound(lt); },
+      word: () => { hush(); en(lt.word); },
+    });
+    const my = actToken;
+    (async () => {
+      if (idx === 1) { await ko('글자를 누르면 소리가 나요'); if (my !== actToken) return; }
+      await enLetterName(lt); if (my !== actToken) return; await sleep(250);
+      await enSound(lt); if (my !== actToken) return; await sleep(200);
+      await enSound(lt); if (my !== actToken) return; await sleep(250);
+      await en(lt.word); if (my !== actToken) return;
+      await ko(`이 글자는 '${lt.snd}' 소리가 나요`);
+    })();
+  }
+  // 소리 듣고 글자 고르기 (보기 3개, 같은 수업 글자)
+  function actPhPickLetter(a) {
+    const lt = a.lt; const att = { n: 0 };
+    const opts = shuffle([lt].concat(shuffle(a.pool.filter(x => x !== lt)).slice(0, 2)));
+    render('lesson', lessonFrame(`<div class="prompt">
+        <div class="bubble">어떤 글자 소리일까?</div>
+        <div class="listen-row"><button class="listen" data-act="snd" aria-label="다시 듣기">🔊</button><button class="listen slow" data-act="word" aria-label="단어 힌트">💡</button></div>
+      </div>
+      <div class="choices three">${opts.map(x => letterTile(x, 'pick')).join('')}</div>`, { split: true }), {
+      ...baseHandlers(),
+      snd: () => { hush(); enSound(lt); }, word: () => { hush(); en(lt.word); },
+      pick: async (arg, btn) => {
+        if (btn.classList.contains('wrong') || document.querySelector('.choice.right')) return;
+        hush(); const my = actToken;
+        if (arg === lt.l) {
+          btn.classList.add('right'); ding(); const n = award(true); flash(n ? '⭐' : '👍');
+          await enSound(lt); if (my !== actToken) return; await en(lt.word); if (my === actToken && n && Math.random() < 0.5) await en(praise()); await sleep(300); if (my === actToken) nextAct();
+        } else {
+          att.n++; boop(); btn.classList.add('wrong');
+          document.querySelectorAll('.choice').forEach(c => { if (c.dataset.arg === lt.l) c.classList.add('glow'); });
+          await ko('다시 해볼까?'); if (my === actToken) await enSound(lt);
+        }
+      },
+    });
+    const my = actToken;
+    (async () => { if (!L.heardKo.pickl) { L.heardKo.pickl = 1; await ko('어떤 글자 소리일까? 잘 듣고 골라요'); } if (my === actToken) { await enSound(lt); if (my === actToken) { await sleep(200); enSound(lt); } } })();
+  }
+  // 소리 합치기: 글자 타일을 누르면 소리, "합치기"를 누르면 소리를 차례로 → 단어
+  async function blendPlay(w, slowFirst) {
+    const my = sayToken; const tiles = [...document.querySelectorAll('.blend .choice')];
+    for (let i = 0; i < w.en.length; i++) {
+      const lt = phLetter(w.en[i]); if (!lt) continue;
+      tiles.forEach((t, j) => t.classList.toggle('on', j === i));
+      await enSound(lt); if (my !== sayToken) return; await sleep(slowFirst ? 350 : 150);
+    }
+    tiles.forEach(t => t.classList.add('on'));
+    await en(w.en, true); if (my !== sayToken) return; await sleep(150); await en(w.en);
+    tiles.forEach(t => t.classList.remove('on'));
+  }
+  function actPhBlend(a) {
+    const w = a.w; const idx = L.acts.filter(x => x.type === 'ph-blend').indexOf(a) + 1; const n = L.acts.filter(x => x.type === 'ph-blend').length;
+    render('lesson', lessonFrame(`<div class="prompt">
+        <div class="bubble">소리를 합쳐 볼까?<small>글자를 하나씩 누른 다음, 합치기!</small></div>
+        <div class="choices three blend">${[...w.en].map(ch => `<button class="choice letter" data-act="tile" data-arg="${ch}"><span class="lt">${ch}</span></button>`).join('')}</div>
+        <div class="listen-row"><button class="btn primary" data-act="blend">🧩 합치기</button><button class="listen" data-act="word" aria-label="단어 듣기">🔊</button></div>
+      </div>
+      <div class="prompt">
+        <div class="pic">${picHtml(w)}</div><div class="word">${esc(w.en)}</div><div class="ko">${esc(w.ko)}</div>
+        <div class="next-row"><span class="muted">단어 ${idx} / ${n}</span><button class="btn primary" data-act="next">다음 ▶</button></div>
+      </div>`, { split: true }), {
+      ...baseHandlers(), next: nextAct,
+      tile: (ch, btn) => { hush(); const lt = phLetter(ch); document.querySelectorAll('.blend .choice').forEach(t => t.classList.remove('on')); btn.classList.add('on'); if (lt) enSound(lt).then(() => btn.classList.remove('on')); },
+      blend: () => { hush(); blendPlay(w, true); },
+      word: () => { hush(); en(w.en); },
+    });
+    const my = actToken;
+    (async () => { if (!L.heardKo.blend) { L.heardKo.blend = 1; await ko('소리를 합쳐 볼까? 글자를 하나씩 누른 다음, 합치기!'); } if (my === actToken) blendPlay(w, true); })();
+  }
+  // 단어 듣고 고르기 (보기 3개: 글자+그림)
+  function actPhPickWord(a) {
+    const w = a.w; const att = { n: 0 };
+    const opts = shuffle([w].concat(shuffle(a.pool.filter(x => x.en !== w.en && x.img !== w.img)).slice(0, 2)));
+    render('lesson', lessonFrame(`<div class="prompt">
+        <div class="bubble">무슨 단어일까?</div>
+        <div class="listen-row"><button class="listen" data-act="play" aria-label="다시 듣기">🔊</button><button class="listen slow" data-act="slow" aria-label="천천히">🐢</button></div>
+      </div>
+      <div class="choices three">${opts.map(x => `<button class="choice wordpick" data-act="pick" data-arg="${esc(x.en)}"><span class="lt">${esc(x.en)}</span><span class="em">${picHtml(x)}</span></button>`).join('')}</div>`, { split: true }), {
+      ...baseHandlers(),
+      play: () => { hush(); en(w.en); }, slow: () => { hush(); en(w.en, true); },
+      pick: async (arg, btn) => {
+        if (btn.classList.contains('wrong') || document.querySelector('.choice.right')) return;
+        hush(); const my = actToken;
+        if (arg === w.en) {
+          btn.classList.add('right'); ding(); const n = award(true); flash(n ? '⭐' : '👍');
+          await en(w.en); if (my === actToken && n && Math.random() < 0.5) await en(praise()); await sleep(300); if (my === actToken) nextAct();
+        } else {
+          att.n++; boop(); btn.classList.add('wrong');
+          document.querySelectorAll('.choice').forEach(c => { if (c.dataset.arg === w.en) c.classList.add('glow'); });
+          await ko('다시 해볼까?'); if (my === actToken) await en(w.en, true);
+        }
+      },
+    });
+    const my = actToken;
+    (async () => { if (!L.heardKo.pickw) { L.heardKo.pickw = 1; await ko('무슨 단어일까? 잘 듣고 골라요'); } if (my === actToken) en(w.en); })();
+  }
+  function finishPhon() {
+    const idx = L.phon; const ls = PH.lessons[idx];
+    S.phon.done[idx] = today();
+    if (S.phon.i === idx) S.phon.i = Math.min(idx + 1, PH.lessons.length); // 다음 수업으로 (다시 한 수업이면 진도 그대로)
+    save();
+    const all = Object.keys(S.phon.done).length >= PH.lessons.length;
+    render('reward', `<div class="screen"><div class="reward">
+      <div class="friends">${famIds().map(id => friendHtml(id, true)).join('')}</div>
+      <div class="bubble">파닉스 끝! 정말 잘했어, ${esc(S.settings.childName)}!<small>${esc(ls.title)} 완료</small></div>
+      <div class="big-stars">⭐ +${L.earned}</div>
+      ${all ? '<div class="sticker-new">🔤</div><div class="bubble">파닉스를 모두 끝냈어요!</div>' : ''}
+      <div class="home-links">
+        <button class="btn" data-act="list">🔤 파닉스 목록</button>
+        ${!all && S.phon.i < PH.lessons.length ? `<button class="btn" data-act="next">다음 파닉스 ▶</button>` : ''}
+        <button class="btn primary" data-act="home">끝!</button>
+      </div>
+    </div></div>`, { home: homeScreen, list: phonScreen, next: () => startPhon(phonNext()) });
+    confetti(); tone([523, 659, 784, 1046], 0.16);
+    ko('파닉스 끝! 정말 잘했어요');
   }
 
   /* ================= 하루 끝 ================= */
@@ -909,7 +1117,7 @@
     S.stars += bonus; L.earned += bonus; todayLog().stars += bonus; save();
     const todayWords = L.words;
     render('reward', `<div class="screen"><div class="reward">
-      <div class="friends">${Object.keys(C.friends).map(id => friendHtml(id, true)).join('')}</div>
+      <div class="friends">${famIds().map(id => friendHtml(id, true)).join('')}</div>
       <div class="bubble">오늘 영어 끝! 정말 잘했어, ${esc(S.settings.childName)}!<small>내일 또 만나요 👋</small></div>
       <div class="big-stars">⭐ +${L.earned}</div>
       ${bonus ? `<div class="muted" style="font-weight:800;margin-top:-10px">끝까지 한 보너스 ⭐${bonus} 포함</div>` : ''}
@@ -1168,7 +1376,6 @@
         <label>영어 목소리<select data-set="voice"><option value="native"${st.voice !== 'device' ? ' selected' : ''}>원어민 녹음 (추천)</option><option value="device"${st.voice === 'device' ? ' selected' : ''}>기기 음성</option></select></label>
         <label>로봇 친구 이름<input data-set="robotName" value="${esc(st.robotName)}"></label>
         <label>나이 (영어 대답)<select data-set="age">${['six', 'seven', 'eight'].map(v => `<option${st.age === v ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
-        <label>현이는<select data-set="hyunRel"><option value="brother"${st.hyunRel === 'brother' ? ' selected' : ''}>brother (남동생)</option><option value="sister"${st.hyunRel === 'sister' ? ' selected' : ''}>sister (여동생)</option></select></label>
         <label>하루 최대 시간(분)<input data-set="dailyLimit" type="number" min="5" max="120" value="${st.dailyLimit}"></label>
         <label>별 목표(개)<input data-set="goalStars" type="number" min="5" max="999" value="${st.goalStars}"></label>
         <label>목표 보상<input data-set="goalText" value="${esc(st.goalText)}"></label>
@@ -1265,7 +1472,7 @@
   // 저장된 진도가 브라우저 정리로 지워지지 않게 요청
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) { /* */ }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { hush(); stopRec(); } });
-  window.YUNI = { get state() { return S; }, get act() { return L && L.acts[L.i]; }, get lesson() { return L; }, buildStep: s => buildStep(L.t, L.d, s), matches, parseCode, fill, pickOld: (t, d, n) => { const r = oldWords(t, d, newWords(t, d), n); touchRecent(r); return r.map(x => `${x.t}:${x.w.en}`); }, choiceSet: (t, en, n) => choiceSet(t, T[t].words.find(w => w.en === en), n).map(x => x.en), dayQuestions }; // 테스트용
+  window.YUNI = { get state() { return S; }, get act() { return L && L.acts[L.i]; }, get lesson() { return L; }, buildStep: s => buildStep(L.t, L.d, s), startPhon, makePhon, matches, parseCode, fill, pickOld: (t, d, n) => { const r = oldWords(t, d, newWords(t, d), n); touchRecent(r); return r.map(x => `${x.t}:${x.w.en}`); }, choiceSet: (t, en, n) => choiceSet(t, T[t].words.find(w => w.en === en), n).map(x => x.en), dayQuestions }; // 테스트용
   homeScreen();
   // 시작하고 잠시 뒤 새 버전이 있는지 조용히 확인
   setTimeout(() => { if (!/^https?:/.test(location.protocol) || window.__SPEC_INLINE || navigator.onLine === false) return;

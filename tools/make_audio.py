@@ -14,14 +14,17 @@ idx = json.load(open(idx_path)) if os.path.exists(idx_path) else {}
 todo = [k for k in keys if k not in idx or not os.path.exists(os.path.join(AUD, idx[k]))]
 print('전체', len(keys), '/ 새로 만들 것', len(todo), flush=True)
 kok = Kokoro(sys.argv[2], sys.argv[3]); tok = Tokenizer()
-# 한국 이름 발음 보정 (음소 치환)
-FIX = [('jˈuːnhuː', 'ˈʌnhuː'), ('kˈɔːɹɑːk', 'ʧˈoʊɹoʊk'), ('hˈaɪʌn', 'hjˈʌn')]
+# 발음 보정 (음소 치환). 'ph|...' 키는 글자 소리(파닉스): 뒤의 발음기호를 그대로 읽어요 (v1.11.0)
+FIX = []
 done = 0
 for k in todo:
     slow = k.startswith('slow|'); text = k[5:] if slow else k
-    ph = tok.phonemize(text, 'en-us')
-    for a, b in FIX: ph = ph.replace(a, b)
-    samples, sr = kok.create(ph, voice='af_heart', speed=0.72 if slow else 0.92, is_phonemes=True)
+    if k.startswith('ph|'): ph = k[3:]; speed = 0.9
+    else:
+        ph = tok.phonemize(text, 'en-us')
+        for a, b in FIX: ph = ph.replace(a, b)
+        speed = 0.72 if slow else 0.92
+    samples, sr = kok.create(ph, voice='af_heart', speed=speed, is_phonemes=True)
     fn = hashlib.md5(k.encode()).hexdigest()[:12] + '.mp3'
     with tempfile.NamedTemporaryFile(suffix='.wav') as tmp:
         sf.write(tmp.name, samples, sr)

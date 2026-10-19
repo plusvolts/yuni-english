@@ -12,7 +12,7 @@
  *  - alt: 아이 발음이 이렇게 인식돼도 정답으로 인정할 단어들 (선택)
  *  - photo: 'photos/dad.jpg' 처럼 넣으면 이모지 대신 사진 표시 (선택)
  *  - questions: 대화 질문. keywords 중 하나라도 들리면 정답
- *    {NAME} {AGE} {HYUN_REL} 은 아빠 화면 설정값으로 바뀜
+ *    {NAME} {AGE} 는 아빠 화면 설정값으로 바뀜. friend: 'mom' 처럼 적으면 그 가족이 물어봐요 (family 참고)
  *  - 고친 뒤 sw.js 의 VERSION 숫자를 올려야 설치된 앱에 반영돼요.
  */
 window.CONTENT = {
@@ -112,7 +112,7 @@ window.CONTENT = {
         { q: 'Do you like school?', ko: '학교 좋아해?', img: '🏫', answer: 'Yes, I do.', keywords: ['yes', 'no', 'yeah', 'i do'] },
         { q: "What's this?", ko: '이건 뭐야?', img: '✏️', answer: "It's a pencil.", keywords: ['pencil', 'pencils'] },
         { q: 'Thank you!', ko: '고마워!', img: '🙏', answer: "You're welcome.", keywords: ['welcome', "you're welcome", 'your welcome'] },
-        { q: 'Who is your friend?', ko: '친구는 누구야?', answer: 'Eunhoo is my friend.', keywords: ['friend', 'friends', 'eunhoo', 'eun ho', 'unho', 'and who', 'in who'] },
+        { q: 'Who is in your family?', ko: '가족은 누구누구야?', img: '👨‍👩‍👦‍👦', answer: 'Mom, Dad, and me.', keywords: ['mom', 'dad', 'mommy', 'daddy', 'brother', 'sister', 'baby', 'me', 'grandma', 'grandpa', 'family'] },
         { q: "I'm sorry.", ko: '미안해.', img: '😔', answer: "That's okay.", keywords: ['okay', 'ok', "that's okay", 'alright', 'all right', 'fine'] },
         { q: 'Is this your bag?', ko: '이거 네 가방이야?', img: '🎒', answer: 'Yes, it is.', keywords: ['yes', 'no', 'yeah', 'it is'] },
         { q: "What's your favorite toy?", ko: '제일 좋아하는 장난감은 뭐야?', img: '🧸', answer: 'My favorite toy is a robot.', keywords: ['robot', 'car', 'ball', 'doll', 'game', 'teddy', 'bear', 'toy', 'dinosaur', 'blocks', 'truck', 'train'] },
@@ -212,19 +212,19 @@ window.CONTENT = {
         { en: 'stroller', ko: '유모차', img: '👶🛒', d: '아기를 태우고 밀어', alt: ['strollers'] },
       ],
       questions: [
-        { q: "Who's Hyun?", ko: '현이는 누구야?', answer: 'Hyun is my {HYUN_REL}.', keywords: ['brother', 'sister', 'brothers', 'sisters'], friend: 'hyun' },
-        { q: "Who's Eunhoo?", ko: '은후는 누구야?', answer: 'Eunhoo is my friend.', keywords: ['friend', 'friends', 'fred'], friend: 'eunhoo' },
-        { q: "Who's Chorok?", ko: '초록이는 누구야?', answer: 'Chorok is my cousin.', keywords: ['cousin', 'cousins', 'causing'], friend: 'chorok' },
+        { q: 'Who is she?', ko: '이 사람은 누구야?', img: '👩‍🦱', answer: "She's my aunt.", keywords: ['aunt', 'ant', 'aunty', 'auntie', 'and'], friend: 'aunt' },
+        { q: 'Who is he?', ko: '이 사람은 누구야?', img: '🧔', answer: "He's my uncle.", keywords: ['uncle', 'uncles', 'ankle'], friend: 'uncle' },
+        { q: "Who's this?", ko: '이 사람은 누구야?', img: '👴', answer: "It's my grandpa.", keywords: ['grandpa', 'grandfather', 'grampa', 'grandpa s'] },
         { q: "Who's this?", ko: '이 사람은 누구야?', img: '👩', answer: "It's my mom.", keywords: ['mom', 'mommy', 'mother', 'mum', 'mam'] },
         { q: "Who's this?", ko: '이 사람은 누구야?', img: '👨', answer: "It's my dad.", keywords: ['dad', 'daddy', 'father', 'that'] },
-        { q: 'Do you want to play with me?', ko: '나랑 놀래?', answer: "Sure! Let's play.", keywords: ['sure', 'yes', 'okay', 'ok', "let's play", 'play', 'yeah'], friend: 'eunhoo' },
+        { q: 'Do you want to play with me?', ko: '나랑 놀래?', answer: "Sure! Let's play.", keywords: ['sure', 'yes', 'okay', 'ok', "let's play", 'play', 'yeah'], friend: 'uncle' },
         { q: "Who's this?", ko: '이 사람은 누구야?', img: '👵', answer: "It's my grandma.", keywords: ['grandma', 'grandmother', 'granny', 'grandma s'] },
         { q: 'Do you love your family?', ko: '가족을 사랑해?', img: '🏡', answer: 'Yes, I do.', keywords: ['yes', 'yeah', 'i do', 'love'] },
         { q: 'How many people are in your family?', ko: '가족이 몇 명이야?', img: '👨‍👩‍👦‍👦', answer: 'Four.', keywords: ['two', 'three', 'four', 'five', 'six', '2', '3', '4', '5', '6', 'for', 'tree'] },
         { q: "Who's this?", ko: '이건 누구야?', img: '👶', answer: "It's a baby.", keywords: ['baby', 'babies'] },
-        { q: 'Can you help me?', ko: '나 좀 도와줄래?', answer: 'Sure, I can help you.', keywords: ['sure', 'yes', 'okay', 'ok', 'help', 'yeah'], friend: 'hyun' },
+        { q: 'Can you help me?', ko: '나 좀 도와줄래?', answer: 'Sure, I can help you.', keywords: ['sure', 'yes', 'okay', 'ok', 'help', 'yeah'], friend: 'mom' },
         { q: 'Give me a hug!', ko: '안아줘!', img: '🤗', answer: 'Okay! Big hug!', keywords: ['okay', 'ok', 'hug', 'sure', 'yes'] },
-        { q: 'Who do you play with?', ko: '누구랑 놀아?', answer: 'I play with my friends.', keywords: ['friend', 'friends', 'eunhoo', 'hyun', 'chorok', 'brother', 'sister', 'cousin', 'mom', 'dad'] },
+        { q: 'Who do you play with?', ko: '누구랑 놀아?', answer: 'I play with my friends.', keywords: ['friend', 'friends', 'brother', 'sister', 'cousin', 'mom', 'dad', 'uncle', 'aunt', 'baby'] },
         { q: 'Is Grandpa old or young?', ko: '할아버지는 나이가 많아, 적어?', img: '👴', answer: "He's old.", keywords: ['old', 'all', 'hold'] },
         { q: 'Do you have a brother?', ko: '남자 형제가 있어?', img: '👦', answer: 'Yes, I do.', keywords: ['yes', 'no', 'yeah', 'i do', "i don't"] },
         { q: 'Who cooks dinner?', ko: '저녁은 누가 해?', img: '🍽️', answer: 'My mom cooks dinner.', keywords: ['mom', 'dad', 'grandma', 'grandpa', 'mommy', 'daddy', 'me'] },
@@ -1100,7 +1100,7 @@ window.CONTENT = {
     },
     {
       id: 'science', title: '과학실험', en: 'Science Lab', icon: '🔬', sticker: '🧪', grade: 1, fav: true,
-      mission: '집에서 해봐요! 컵에 물을 담고 얼음을 넣어요. "Put the ice in the water. Is it cold?" 현이랑 같이 손으로 만져보고 영어로 말해봐요.',
+      mission: '집에서 해봐요! 컵에 물을 담고 얼음을 넣어요. "Put the ice in the water. Is it cold?" 엄마 아빠랑 같이 손으로 만져보고 영어로 말해봐요.',
       words: [
         { en: 'ice', ko: '얼음', img: '🧊', alt: ['eyes', 'nice'], d: '꽁꽁 차가워' },
         { en: 'hot', ko: '뜨거운', img: '🔥', alt: ['hat', 'hut'], d: '앗 뜨거워' },
@@ -2279,7 +2279,7 @@ window.CONTENT = {
         { q: 'Is this right or wrong?', ko: '이건 맞아, 틀려?', img: '✔️', answer: "It's right.", keywords: ['right', 'wrong', 'correct', 'write'] },
         { q: 'How do you say 사과 in English?', ko: '사과는 영어로 뭐야?', img: '🍎', answer: 'Apple!', keywords: ['apple', 'apples'] },
         { q: 'How do you say 고양이 in English?', ko: '고양이는 영어로 뭐야?', img: '🐱', answer: 'Cat!', keywords: ['cat', 'cats'] },
-        { q: 'Who is your partner?', ko: '네 짝은 누구야?', img: '👫', answer: 'My friend is my partner.', keywords: ['friend', 'partner', 'eunhoo', 'eunho', 'eun', 'chorok', 'hyun', 'my'] },
+        { q: 'Who is your partner?', ko: '네 짝은 누구야?', img: '👫', answer: 'My friend is my partner.', keywords: ['friend', 'partner', 'my', 'boy', 'girl'] },
         { q: 'Can you count to ten?', ko: '열까지 셀 수 있어?', img: '🔟', answer: 'One, two, three!', keywords: ['one', 'two', 'three', 'ten', 'yes', 'can'] },
         { q: 'What letter is this?', ko: '이건 무슨 글자야?', img: '🅰️', answer: "It's A.", keywords: ['a', 'ay', 'eh', 'hey'] },
         { q: 'Are you late?', ko: '늦었어?', img: '🏃⏰', answer: "No, I'm not!", keywords: ['no', 'yes', 'not'] },
@@ -3038,7 +3038,7 @@ window.CONTENT = {
         { q: 'How does a flower smell?', ko: '꽃은 어떤 냄새가 나?', img: '🌹', answer: 'It smells good.', keywords: ['good', 'nice', 'bad', 'sweet', 'flower', 'yummy'] },
         { q: 'Is the sea deep?', ko: '바다는 깊어?', img: '🌊⬇️', answer: "Yes, it's deep.", keywords: ['yes', 'deep', 'yeah'] },
         { q: 'Are these the same or different?', ko: '이건 같아, 달라?', img: '🍎🍌', answer: "They're different.", keywords: ['different', 'same'] },
-        { q: 'Who is next to you?', ko: '네 옆엔 누가 있어?', img: '🐱🐶', answer: 'My brother.', keywords: ['brother', 'sister', 'mom', 'dad', 'friend', 'hyun', 'nobody', 'teacher', 'grandma', 'grandpa'] },
+        { q: 'Who is next to you?', ko: '네 옆엔 누가 있어?', img: '🐱🐶', answer: 'My brother.', keywords: ['brother', 'sister', 'mom', 'dad', 'friend', 'baby', 'nobody', 'teacher', 'grandma', 'grandpa', 'uncle', 'aunt'] },
         { q: 'Is a turtle fast?', ko: '거북이는 빨라?', img: '🐢', answer: "No, it's slow.", keywords: ['no', 'slow', 'fast'] },
         { q: "What's in front of you?", ko: '네 앞에 뭐가 있어?', img: '👉🧍', answer: 'A table.', keywords: ['table', 'desk', 'book', 'tv', 'computer', 'tablet', 'mom', 'dad', 'wall', 'window', 'phone'] },
         { q: 'Is your hair curly or straight?', ko: '네 머리는 곱슬곱슬해, 곧아?', img: '➰', answer: "It's straight.", keywords: ['straight', 'curly', 'short', 'long'] },
@@ -3065,10 +3065,76 @@ window.CONTENT = {
     praise: ['Great job!', 'Awesome!', 'You got it!', 'Nice work, {NAME}!', 'Perfect!', "Yes! That's right!", 'Well done!', 'Wow, super!'],
   },
 
-  // 함께하는 친구들 (앱 속 캐릭터)
-  friends: {
-    eunhoo: { name: '은후', color: '#ffb74d', role: '같이 문제 푸는 친구' },
-    chorok: { name: '초록', color: '#66bb6a', role: '윤이가 가르쳐주는 동생' },
-    hyun: { name: '현', color: '#64b5f6', role: '윤이가 가르쳐주는 동생' },
+  // 함께하는 가족 (앱 속 캐릭터, v1.11.0: 친구 은후·초록·현 → 가족). photo: 'photos/mom.jpg' 처럼 넣으면 이름 대신 사진이 나와요
+  family: {
+    mom: { name: '엄마', en: 'Mom', color: '#f06292' },
+    dad: { name: '아빠', en: 'Dad', color: '#42a5f5' },
+    aunt: { name: '이모', en: 'Aunt', color: '#ab47bc' },
+    imobu: { name: '이모부', en: 'Uncle', color: '#26a69a' },
+    uncle: { name: '삼촌', en: 'Uncle', color: '#ff9800' },
+  },
+
+  // ================= 파닉스 (v1.11.0) =================
+  // letters: 글자마다 이름(name 발음), 소리(snd 한글 느낌, ph = 녹음용 발음기호), 보기 단어
+  // families: 짧은 모음 세 글자 단어(CVC) 묶음. 글자 소리를 하나씩 듣고 합쳐서 읽어요
+  // lessons: 파닉스 수업 순서 (letters: 글자 묶음 / families: 단어 묶음)
+  phonics: {
+    letters: [
+      { l: 'a', name: '에이', snd: '애', ph: 'æː', word: 'apple', ko: '사과', img: '🍎' },
+      { l: 'b', name: '비', snd: '브', ph: 'bə', word: 'ball', ko: '공', img: '⚽' },
+      { l: 'c', name: '씨', snd: '크', ph: 'kə', word: 'cat', ko: '고양이', img: '🐱' },
+      { l: 'd', name: '디', snd: '드', ph: 'də', word: 'dog', ko: '개', img: '🐶' },
+      { l: 'e', name: '이', snd: '에', ph: 'ɛː', word: 'egg', ko: '달걀', img: '🥚' },
+      { l: 'f', name: '에프', snd: '프', ph: 'fː', word: 'fish', ko: '물고기', img: '🐟' },
+      { l: 'g', name: '쥐', snd: '그', ph: 'ɡə', word: 'goat', ko: '염소', img: '🐐' },
+      { l: 'h', name: '에이치', snd: '흐', ph: 'hə', word: 'hat', ko: '모자', img: '🎩' },
+      { l: 'i', name: '아이', snd: '이', ph: 'ɪː', word: 'insect', ko: '곤충', img: '🐞' },
+      { l: 'j', name: '제이', snd: '즈', ph: 'dʒə', word: 'jam', ko: '잼', img: '🍯' },
+      { l: 'k', name: '케이', snd: '크', ph: 'kə', word: 'kite', ko: '연', img: '🪁' },
+      { l: 'l', name: '엘', snd: '을', ph: 'lː', word: 'lion', ko: '사자', img: '🦁' },
+      { l: 'm', name: '엠', snd: '음', ph: 'mː', word: 'milk', ko: '우유', img: '🥛' },
+      { l: 'n', name: '엔', snd: '은', ph: 'nː', word: 'nose', ko: '코', img: '👃' },
+      { l: 'o', name: '오', snd: '아', ph: 'ɑː', word: 'octopus', ko: '문어', img: '🐙' },
+      { l: 'p', name: '피', snd: '프', ph: 'pə', word: 'pig', ko: '돼지', img: '🐷' },
+      { l: 'q', name: '큐', snd: '쿠', ph: 'kwə', word: 'queen', ko: '여왕', img: '👸' },
+      { l: 'r', name: '알', snd: '르', ph: 'ɹː', word: 'rabbit', ko: '토끼', img: '🐰' },
+      { l: 's', name: '에스', snd: '스', ph: 'sː', word: 'sun', ko: '해', img: '☀️' },
+      { l: 't', name: '티', snd: '트', ph: 'tə', word: 'tiger', ko: '호랑이', img: '🐯' },
+      { l: 'u', name: '유', snd: '어', ph: 'ʌː', word: 'umbrella', ko: '우산', img: '☂️' },
+      { l: 'v', name: '브이', snd: '브', ph: 'vː', word: 'van', ko: '승합차', img: '🚐' },
+      { l: 'w', name: '더블유', snd: '우', ph: 'wə', word: 'water', ko: '물', img: '💧' },
+      { l: 'x', name: '엑스', snd: '크스', ph: 'ks', word: 'box', ko: '상자', img: '📦' },
+      { l: 'y', name: '와이', snd: '이', ph: 'jə', word: 'yellow', ko: '노란색', img: '💛' },
+      { l: 'z', name: '지', snd: '즈', ph: 'zː', word: 'zebra', ko: '얼룩말', img: '🦓' },
+    ],
+    families: [
+      { id: 'at', words: [{ en: 'cat', ko: '고양이', img: '🐱' }, { en: 'bat', ko: '박쥐', img: '🦇' }, { en: 'hat', ko: '모자', img: '🎩' }, { en: 'rat', ko: '쥐', img: '🐀' }] },
+      { id: 'an', words: [{ en: 'can', ko: '캔', img: '🥫' }, { en: 'pan', ko: '프라이팬', img: '🍳' }, { en: 'man', ko: '남자', img: '👨' }, { en: 'van', ko: '승합차', img: '🚐' }] },
+      { id: 'ap', words: [{ en: 'cap', ko: '야구 모자', img: '🧢' }, { en: 'map', ko: '지도', img: '🗺️' }, { en: 'nap', ko: '낮잠', img: '😴' }, { en: 'tap', ko: '수도꼭지', img: '🚰' }] },
+      { id: 'ig', words: [{ en: 'pig', ko: '돼지', img: '🐷' }, { en: 'big', ko: '큰', img: '🐘' }, { en: 'dig', ko: '파다', img: '⛏️' }, { en: 'fig', ko: '무화과', img: '🟣' }] },
+      { id: 'in', words: [{ en: 'pin', ko: '핀', img: '📌' }, { en: 'fin', ko: '지느러미', img: '🐟' }, { en: 'bin', ko: '쓰레기통', img: '🗑️' }, { en: 'win', ko: '이기다', img: '🏆' }] },
+      { id: 'it', words: [{ en: 'sit', ko: '앉다', img: '🪑' }, { en: 'hit', ko: '치다', img: '👊' }, { en: 'kit', ko: '도구 상자', img: '🧰' }, { en: 'bit', ko: '조금', img: '🤏' }] },
+      { id: 'og', words: [{ en: 'dog', ko: '개', img: '🐶' }, { en: 'log', ko: '통나무', img: '🪵' }, { en: 'fog', ko: '안개', img: '🌫️' }, { en: 'jog', ko: '달리기', img: '🏃' }] },
+      { id: 'ot', words: [{ en: 'hot', ko: '뜨거운', img: '🔥' }, { en: 'pot', ko: '냄비', img: '🍲' }, { en: 'dot', ko: '점', img: '⚫' }, { en: 'cot', ko: '아기 침대', img: '🛏️' }] },
+      { id: 'op', words: [{ en: 'hop', ko: '깡충 뛰다', img: '🐰' }, { en: 'mop', ko: '대걸레', img: '🧹' }, { en: 'top', ko: '꼭대기', img: '🔝' }, { en: 'pop', ko: '펑', img: '🎈' }] },
+      { id: 'ug', words: [{ en: 'bug', ko: '벌레', img: '🐛' }, { en: 'hug', ko: '안아주기', img: '🤗' }, { en: 'mug', ko: '머그컵', img: '☕' }, { en: 'rug', ko: '깔개', img: '🟫' }] },
+      { id: 'un', words: [{ en: 'sun', ko: '해', img: '☀️' }, { en: 'run', ko: '달리다', img: '🏃‍♂️' }, { en: 'fun', ko: '재미', img: '🎉' }, { en: 'bun', ko: '둥근 빵', img: '🥯' }] },
+      { id: 'en', words: [{ en: 'hen', ko: '암탉', img: '🐔' }, { en: 'pen', ko: '펜', img: '🖊️' }, { en: 'ten', ko: '열', img: '🔟' }, { en: 'men', ko: '남자들', img: '👬' }] },
+      { id: 'ed', words: [{ en: 'bed', ko: '침대', img: '🛏️' }, { en: 'red', ko: '빨간색', img: '🔴' }, { en: 'wed', ko: '결혼하다', img: '💒' }, { en: 'fed', ko: '먹이를 줬다', img: '🍼' }] },
+      { id: 'et', words: [{ en: 'net', ko: '그물', img: '🥅' }, { en: 'pet', ko: '반려동물', img: '🐕' }, { en: 'wet', ko: '젖은', img: '💦' }, { en: 'jet', ko: '제트기', img: '✈️' }] },
+    ],
+    lessons: [
+      { title: '글자 소리 a~g', icon: '🔤', letters: 'abcdefg' },
+      { title: '글자 소리 h~n', icon: '🔤', letters: 'hijklmn' },
+      { title: '글자 소리 o~t', icon: '🔤', letters: 'opqrst' },
+      { title: '글자 소리 u~z', icon: '🔤', letters: 'uvwxyz' },
+      { title: '소리 합치기 -at -an', icon: '🧩', families: ['at', 'an'] },
+      { title: '소리 합치기 -ap -ig', icon: '🧩', families: ['ap', 'ig'] },
+      { title: '소리 합치기 -in -it', icon: '🧩', families: ['in', 'it'] },
+      { title: '소리 합치기 -og -ot', icon: '🧩', families: ['og', 'ot'] },
+      { title: '소리 합치기 -op -ug', icon: '🧩', families: ['op', 'ug'] },
+      { title: '소리 합치기 -un -en', icon: '🧩', families: ['un', 'en'] },
+      { title: '소리 합치기 -ed -et', icon: '🧩', families: ['ed', 'et'] },
+    ],
   },
 };
